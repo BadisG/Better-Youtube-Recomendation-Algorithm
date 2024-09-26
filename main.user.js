@@ -54,8 +54,9 @@
     }
 
     // Function to check if the video has any watch progress
-    function hasWatchProgress(thumbnailElement) {
-        return thumbnailElement.querySelector('ytd-thumbnail-overlay-resume-playback-renderer') !== null;
+    function hasWatchProgress(element) {
+        const progressBar = element.querySelector('ytd-thumbnail-overlay-resume-playback-renderer #progress');
+        return progressBar !== null && progressBar.style.width !== '0%';
     }
 
     // Function to increment view count and hide if necessary
@@ -93,22 +94,25 @@
     // Function to observe DOM changes
     function observeDOMChanges() {
         const observer = new MutationObserver((mutations) => {
-            const newThumbnails = [];
-
             mutations.forEach((mutation) => {
                 if (mutation.type === 'childList') {
                     mutation.addedNodes.forEach((node) => {
-                        if (node.nodeType === Node.ELEMENT_NODE && (node.matches('ytd-rich-grid-media') || node.matches('ytd-compact-video-renderer'))) {
-                            newThumbnails.push(node);
+                        if (node.nodeType === Node.ELEMENT_NODE) {
+                            processThumbnail(node);
                         }
                     });
+                } else if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                    processThumbnail(mutation.target);
                 }
             });
-            // Process thumbnails in batch after all mutations are handled
-            newThumbnails.forEach(processThumbnail);
         });
 
-        observer.observe(document.body, { childList: true, subtree: true });
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['style']
+        });
     }
 
     // Initial processing of existing thumbnails
