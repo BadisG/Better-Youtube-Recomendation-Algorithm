@@ -25,8 +25,10 @@
         const link = thumbnailElement.querySelector('a#thumbnail') || thumbnailElement.querySelector('a.yt-simple-endpoint');
         if (link) {
             const href = link.getAttribute('href');
-            const match = href.match(/[?&]v=([^&]+)/);
-            return match ? match[1] : null;
+            if (href) { // Check if href is not null or undefined
+                const match = href.match(/[?&]v=([^&]+)/);
+                return match ? match[1] : null;
+            }
         }
         return null;
     }
