@@ -16,7 +16,7 @@
 
     // Function to update subscribed channels
     function updateSubscribedChannels() {
-        const channelElements = document.querySelectorAll('ytd-guide-entry-renderer yt-formatted-string.title, #guide-content ytd-guide-entry-renderer yt-formatted-string.title');
+        const channelElements = document.querySelectorAll('ytd-guide-entry-renderer yt-formatted-string.title');
         subscribedChannels = new Set(Array.from(channelElements).map(el => el.textContent.trim().toLowerCase()));
     }
 
