@@ -16,8 +16,10 @@
 
     // Function to update subscribed channels
     function updateSubscribedChannels(allSubscriptions) {
-        subscribedChannels = new Set(Array.from(allSubscriptions).map(el => el.title.trim().toLowerCase()));
-        console.log('Subscribed Channels:', Array.from(subscribedChannels)); // Print the subscribed channels
+        subscribedChannels = new Set(Array.from(allSubscriptions).map(el =>
+                                                                      el.title.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                                                                     ));
+        console.log('Updated Subscribed Channels:', Array.from(subscribedChannels)); // Debug log
     }
 
     // Function to load subscribed channels using the working code
@@ -48,7 +50,7 @@
         }
 
         function getSubscriptions() {
-            const allSubscriptions = document.querySelectorAll('a#endpoint.yt-simple-endpoint.style-scope.ytd-guide-entry-renderer[href^="/@"]');
+            const allSubscriptions = document.querySelectorAll('ytd-guide-section-renderer:nth-child(2) a#endpoint.yt-simple-endpoint[href^="/@"]');
             if (allSubscriptions.length > 0) {
                 printAllSubscriptions(allSubscriptions);
             } else {
@@ -74,8 +76,8 @@
 
     // Function to get the channel name from a thumbnail element
     function getChannelName(thumbnailElement) {
-        const channelNameElement = thumbnailElement.querySelector('ytd-channel-name #text') || thumbnailElement.querySelector('#text');
-        return channelNameElement ? channelNameElement.textContent.trim().toLowerCase() : null;
+        const channelNameElement = thumbnailElement.querySelector('ytd-channel-name #text-container yt-formatted-string#text') || thumbnailElement.querySelector('#text');
+        return channelNameElement ? channelNameElement.textContent.trim() : null;
     }
 
     // Function to check if the thumbnail is a playlist or a mix
@@ -102,29 +104,45 @@
 
     // Function to increment view count and hide if necessary
     function processThumbnail(thumbnailElement) {
-        if (isPlaylist(thumbnailElement) || isLive(thumbnailElement) || hasWatchProgress(thumbnailElement)) {
-            const parentElement = thumbnailElement.closest('ytd-rich-item-renderer') || thumbnailElement.closest('ytd-compact-video-renderer');
-            if (parentElement) {
-                parentElement.style.display = 'none';
-            }
-            return;
-        }
-
         const videoId = getVideoId(thumbnailElement);
         const channelName = getChannelName(thumbnailElement);
 
         if (videoId && channelName) {
-            if (subscribedChannels.has(channelName)) {
+            console.log('Processing thumbnail:', channelName); // Debug log
+
+            const parentElement = thumbnailElement.closest('ytd-rich-item-renderer') || thumbnailElement.closest('ytd-compact-video-renderer');
+
+            const normalizedChannelName = channelName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+            if (subscribedChannels.has(normalizedChannelName)) {
+                console.log('Subscribed channel, hiding:', channelName); // Debug log
+                if (parentElement) {
+                    parentElement.style.display = 'none'; // Hide subscribed channel videos
+                }
                 return;
             }
+
+            if (isPlaylist(thumbnailElement) || isLive(thumbnailElement) || hasWatchProgress(thumbnailElement)) {
+                console.log('Hiding playlist/live/watched video:', channelName);
+                if (parentElement) {
+                    parentElement.style.display = 'none';
+                }
+                return;
+            }
+
             let viewCount = GM_getValue(videoId, 0);
             viewCount++;
             GM_setValue(videoId, viewCount);
 
             if (viewCount > Threshold) {
-                const parentElement = thumbnailElement.closest('ytd-rich-item-renderer') || thumbnailElement.closest('ytd-compact-video-renderer');
+                console.log('Hiding video above threshold:', channelName, 'View count:', viewCount);
                 if (parentElement) {
                     parentElement.style.display = 'none';
+                }
+            } else {
+                console.log('Keeping video below threshold:', channelName, 'View count:', viewCount);
+                if (parentElement) {
+                    parentElement.style.display = ''; // Ensure it's visible
                 }
             }
         }
@@ -137,20 +155,20 @@
                 if (mutation.type === 'childList') {
                     mutation.addedNodes.forEach((node) => {
                         if (node.nodeType === Node.ELEMENT_NODE) {
-                            processThumbnail(node);
+                            if (node.matches('ytd-rich-item-renderer, ytd-compact-video-renderer')) {
+                                processThumbnail(node);
+                            } else {
+                                node.querySelectorAll('ytd-rich-item-renderer, ytd-compact-video-renderer').forEach(processThumbnail);
+                            }
                         }
                     });
-                } else if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
-                    processThumbnail(mutation.target);
                 }
             });
         });
 
         observer.observe(document.body, {
             childList: true,
-            subtree: true,
-            attributes: true,
-            attributeFilter: ['style']
+            subtree: true
         });
     }
 
