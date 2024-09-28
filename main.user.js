@@ -206,8 +206,23 @@
         }
     }
 
+    function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+
+    const debouncedProcessExistingThumbnails = debounce(processExistingThumbnails, 250);
+
     function observeDOMChanges() {
         const observer = new MutationObserver((mutations) => {
+            let shouldProcess = false;
             mutations.forEach((mutation) => {
                 if (mutation.type === 'childList') {
                     mutation.addedNodes.forEach((node) => {
@@ -215,12 +230,15 @@
                             if (node.matches('ytd-rich-item-renderer, ytd-compact-video-renderer')) {
                                 processThumbnail(node);
                             } else {
-                                node.querySelectorAll('ytd-rich-item-renderer, ytd-compact-video-renderer').forEach(processThumbnail);
+                                shouldProcess = true;
                             }
                         }
                     });
                 }
             });
+            if (shouldProcess) {
+                debouncedProcessExistingThumbnails();
+            }
         });
 
         observer.observe(document.body, {
