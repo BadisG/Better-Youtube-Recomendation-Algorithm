@@ -27,9 +27,16 @@
 
     function setGuideTransparency(transparent) {
         const guideContainer = document.querySelector('#contentContainer');
+        const scrim = document.querySelector('#scrim');
+
         if (guideContainer) {
             guideContainer.style.transition = 'opacity 0.3s';
             guideContainer.style.opacity = transparent ? '0' : '1';
+        }
+
+        if (scrim) {
+            scrim.style.transition = 'opacity 0.3s';
+            scrim.style.opacity = transparent ? '0' : '1';
         }
     }
 
@@ -207,10 +214,7 @@
 
     // Run the script
     async function init() {
-        const isWatchPage = window.location.href.includes('watch?v=');
-        if (!isWatchPage) {
-            await loadSubscribedChannels(); // Wait for the subscribed channels to be loaded only if not on a watch page
-        }
+        await loadSubscribedChannels();
         processExistingThumbnails(); // Process thumbnails after loading subscribed channels
         observeDOMChanges(); // Start observing DOM changes after subscribed channels are loaded
     }
