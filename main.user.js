@@ -145,6 +145,7 @@
         return channelNameElement ? channelNameElement.textContent.trim() : null;
     }
 
+
     // Function to check if the thumbnail is a playlist or a mix
     function isPlaylist(thumbnailElement) {
         const playlistLabel = thumbnailElement.querySelector('ytd-thumbnail-overlay-bottom-panel-renderer yt-formatted-string');
@@ -252,8 +253,12 @@
 
     // Modified init function
     function init() {
-        // Run the process after a short delay
-        setTimeout(runEntireProcess, 2000);
+        // Wait until the page is fully loaded before running the process
+        if (document.readyState === 'complete') {
+            runEntireProcess();
+        } else {
+            window.addEventListener('load', runEntireProcess);
+        }
 
         // Add event listeners for navigation within YouTube
         document.addEventListener('yt-navigate-start', runEntireProcess);
@@ -262,7 +267,4 @@
 
     // Run init when the script loads
     init();
-
-    // Also run init when the page has fully loaded
-    window.addEventListener('load', init);
 })();
