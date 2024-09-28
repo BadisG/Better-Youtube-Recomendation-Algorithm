@@ -25,20 +25,32 @@
         console.log('Updated Subscribed Channels:', Array.from(subscribedChannels)); // Debug log
     }
 
+    function setGuideTransparency(transparent) {
+        const guideContainer = document.querySelector('#contentContainer');
+        if (guideContainer) {
+            guideContainer.style.transition = 'opacity 0.3s';
+            guideContainer.style.opacity = transparent ? '0' : '1';
+        }
+    }
+
     // Function to load subscribed channels using the working code
     function loadSubscribedChannels() {
         return new Promise((resolve) => {
             function printAllSubscriptions(allSubscriptions) {
                 console.log('List of all subscribed channels:');
-                updateSubscribedChannels(allSubscriptions); // Update subscribed channels
-                resolve(); // Resolve when channels are loaded
+                updateSubscribedChannels(allSubscriptions);
+                setGuideTransparency(false);
+                resolve();
             }
 
             function clickGuideButton() {
                 const guideButton = document.querySelector('#guide-button');
                 if (guideButton) {
+                    setGuideTransparency(true);
                     guideButton.click();
-                    setTimeout(clickSubscriptionsButton, 1000);
+                    setTimeout(() => {
+                        clickSubscriptionsButton();
+                    }, 1000);
                 } else {
                     setTimeout(clickGuideButton, 1000);
                 }
@@ -50,7 +62,10 @@
                 );
                 if (subscriptionsButton) {
                     subscriptionsButton.click();
-                    setTimeout(getSubscriptions, 2000);
+                    setTimeout(() => {
+                        setGuideTransparency(false);
+                        getSubscriptions();
+                    }, 2000);
                 } else {
                     setTimeout(clickSubscriptionsButton, 1000);
                 }
