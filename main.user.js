@@ -29,16 +29,17 @@
         const guideContainer = document.querySelector('#contentContainer');
         const scrim = document.querySelector('#scrim');
 
-        if (guideContainer) {
-            guideContainer.style.transition = 'opacity 2s';
+        if (guideContainer && window.location.pathname.includes('/watch')) {
+            guideContainer.style.transition = 'opacity 0s';
             guideContainer.style.opacity = transparent ? '0' : '1';
         }
 
-        if (scrim) {
-            scrim.style.transition = 'opacity 2s';
+        if (scrim && window.location.pathname.includes('/watch')) {
+            scrim.style.transition = 'opacity 0s';
             scrim.style.opacity = transparent ? '0' : '1';
         }
     }
+
 
     function loadSubscribedChannels() {
         if (guideProcessing) return; // Prevent re-entrance
@@ -60,6 +61,7 @@
                 if (guideButton) {
                     const isOpen = guideButton.getAttribute('aria-pressed') === 'true';
                     if (!isOpen) {
+                        setGuideTransparency(true);
                         guideButton.click();
                     }
                     setTimeout(clickSubscriptionsButton, 1000);
@@ -107,6 +109,7 @@
                                     guideDrawer.removeAttribute('opened');
                                     console.log('Removed "opened" attribute from guide drawer');
                                 }
+                                setGuideTransparency(false);
                             } else {
                                 console.log('Failed to close guide. Retrying...');
                                 closeGuide();
@@ -118,6 +121,7 @@
                             guideDrawer.removeAttribute('opened');
                             console.log('Removed "opened" attribute from guide drawer');
                         }
+                        setGuideTransparency(false);
                     }
                 }
             }
