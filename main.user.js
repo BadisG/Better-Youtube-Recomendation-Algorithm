@@ -12,7 +12,7 @@
 (function () {
     'use strict';
 
-    let Threshold = 5;
+    let Threshold = 10;
     let subscribedChannels = new Set();
 
     // Function to update subscribed channels
@@ -192,7 +192,10 @@
 
     // Run the script
     async function init() {
-        await loadSubscribedChannels(); // Wait for the subscribed channels to be loaded
+        const isWatchPage = window.location.href.includes('watch?v=');
+        if (!isWatchPage) {
+            await loadSubscribedChannels(); // Wait for the subscribed channels to be loaded only if not on a watch page
+        }
         processExistingThumbnails(); // Process thumbnails after loading subscribed channels
         observeDOMChanges(); // Start observing DOM changes after subscribed channels are loaded
     }
