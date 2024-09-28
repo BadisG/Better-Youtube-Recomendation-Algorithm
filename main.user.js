@@ -14,15 +14,15 @@
 
     let Threshold = 10;
     let subscribedChannels = new Set();
+    let guideProcessing = false; // Flag to prevent multiple executions
 
-    // Function to update subscribed channels
     function updateSubscribedChannels(allSubscriptions) {
         subscribedChannels = new Set(
             Array.from(allSubscriptions).map((el) =>
                 el.title.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
             )
         );
-        console.log('Updated Subscribed Channels:', Array.from(subscribedChannels)); // Debug log
+        console.log('Updated Subscribed Channels:', Array.from(subscribedChannels));
     }
 
     function setGuideTransparency(transparent) {
@@ -40,18 +40,22 @@
         }
     }
 
-    // Function to load subscribed channels using the working code
     function loadSubscribedChannels() {
+        if (guideProcessing) return; // Prevent re-entrance
+        guideProcessing = true; // Set the flag
+
         return new Promise((resolve) => {
             function printAllSubscriptions(allSubscriptions) {
                 console.log('List of all subscribed channels:');
                 updateSubscribedChannels(allSubscriptions);
                 closeGuide();
                 setGuideTransparency(false);
+                guideProcessing = false; // Reset the flag
                 resolve();
             }
 
             function openGuide() {
+                console.log('%cOpening guide...', 'color: red;');
                 const guideButton = document.querySelector('#guide-button');
                 if (guideButton) {
                     const isOpen = guideButton.getAttribute('aria-pressed') === 'true';
@@ -88,18 +92,17 @@
             }
 
             function closeGuide() {
+                console.log('%cClosing guide...', 'color: red;');
                 const guideButton = document.querySelector('#guide-button');
                 const guideDrawer = document.querySelector('tp-yt-app-drawer#guide');
 
                 if (guideButton) {
                     const isOpen = guideButton.getAttribute('aria-pressed') === 'true';
-
                     if (isOpen) {
                         guideButton.click();
                         setTimeout(() => {
                             if (guideButton.getAttribute('aria-pressed') === 'false') {
                                 console.log('Guide successfully closed after gathering subscriptions');
-                                // Ensure the 'opened' attribute is removed
                                 if (guideDrawer) {
                                     guideDrawer.removeAttribute('opened');
                                     console.log('Removed "opened" attribute from guide drawer');
@@ -111,7 +114,6 @@
                         }, 500);
                     } else {
                         console.log('Guide was already closed');
-                        // Ensure the 'opened' attribute is removed
                         if (guideDrawer) {
                             guideDrawer.removeAttribute('opened');
                             console.log('Removed "opened" attribute from guide drawer');
@@ -120,11 +122,10 @@
                 }
             }
 
-            openGuide(); // Start the process by ensuring the guide is open
+            openGuide();
         });
     }
 
-    // Function to get the video ID from a thumbnail element
     function getVideoId(thumbnailElement) {
         const link = thumbnailElement.querySelector('a#thumbnail') || thumbnailElement.querySelector('a.yt-simple-endpoint');
         if (link) {
@@ -137,7 +138,6 @@
         return null;
     }
 
-    // Function to get the channel name from a thumbnail element
     function getChannelName(thumbnailElement) {
         const channelNameElement =
             thumbnailElement.querySelector('ytd-channel-name #text-container yt-formatted-string#text') ||
@@ -145,8 +145,6 @@
         return channelNameElement ? channelNameElement.textContent.trim() : null;
     }
 
-
-    // Function to check if the thumbnail is a playlist or a mix
     function isPlaylist(thumbnailElement) {
         const playlistLabel = thumbnailElement.querySelector('ytd-thumbnail-overlay-bottom-panel-renderer yt-formatted-string');
         if (playlistLabel) {
@@ -156,40 +154,32 @@
         return false;
     }
 
-    // Function to check if the thumbnail is a live video
     function isLive(thumbnailElement) {
         const liveBadge = thumbnailElement.querySelector('ytd-badge-supported-renderer .badge-style-type-live-now-alternate');
         return !!liveBadge;
     }
-    // Function to check if the video has any watch progress
+
     function hasWatchProgress(element) {
         const progressBar = element.querySelector('ytd-thumbnail-overlay-resume-playback-renderer #progress');
         return progressBar !== null && progressBar.style.width !== '0%';
     }
 
-    // Function to increment view count and hide if necessary
     function processThumbnail(thumbnailElement) {
         const videoId = getVideoId(thumbnailElement);
         const channelName = getChannelName(thumbnailElement);
 
         if (videoId && channelName) {
-            console.log('Processing thumbnail:', channelName); // Debug log
-
             const parentElement = thumbnailElement.closest('ytd-rich-item-renderer') || thumbnailElement.closest('ytd-compact-video-renderer');
-
             const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-            // Check if the channel is in the subscribed list
             if (subscribedChannels.has(normalizedChannelName)) {
-                console.log('Subscribed channel, hiding:', channelName); // Debug log
                 if (parentElement) {
-                    parentElement.style.display = 'none'; // Hide subscribed channel videos
+                    parentElement.style.display = 'none';
                 }
                 return;
             }
 
             if (isPlaylist(thumbnailElement) || isLive(thumbnailElement) || hasWatchProgress(thumbnailElement)) {
-                console.log('Hiding playlist/live/watched video:', channelName);
                 if (parentElement) {
                     parentElement.style.display = 'none';
                 }
@@ -201,20 +191,17 @@
             GM_setValue(videoId, viewCount);
 
             if (viewCount > Threshold) {
-                console.log('Hiding video above threshold:', channelName, 'View count:', viewCount);
                 if (parentElement) {
                     parentElement.style.display = 'none';
                 }
             } else {
-                console.log('Keeping video below threshold:', channelName, 'View count:', viewCount);
                 if (parentElement) {
-                    parentElement.style.display = ''; // Ensure it's visible
+                    parentElement.style.display = '';
                 }
             }
         }
     }
 
-    // Function to observe DOM changes
     function observeDOMChanges() {
         const observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
@@ -238,33 +225,29 @@
         });
     }
 
-    // Initial processing of existing thumbnails
     function processExistingThumbnails() {
         const thumbnails = document.querySelectorAll('ytd-rich-grid-media, ytd-compact-video-renderer');
         thumbnails.forEach(processThumbnail);
     }
 
-    // Function to run the entire process
     async function runEntireProcess() {
-        await loadSubscribedChannels();
-        processExistingThumbnails();
-        observeDOMChanges();
+        if (!guideProcessing) {
+            await loadSubscribedChannels();
+            processExistingThumbnails();
+            observeDOMChanges();
+        }
     }
 
-    // Modified init function
     function init() {
-        // Wait until the page is fully loaded before running the process
         if (document.readyState === 'complete') {
             runEntireProcess();
         } else {
             window.addEventListener('load', runEntireProcess);
         }
 
-        // Add event listeners for navigation within YouTube
         document.addEventListener('yt-navigate-start', runEntireProcess);
         document.addEventListener('yt-navigate-finish', runEntireProcess);
     }
 
-    // Run init when the script loads
     init();
 })();
