@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Better Youtube Recommendation Algorithm
 // @namespace    http://tampermonkey.net/
-// @version      1.7
+// @version      1.8
 // @description  Count and hide YouTube thumbnails after 5 views, excluding subscribed channels, and hide playlist, live, and fully watched thumbnails.
 // @match        https://www.youtube.com/
 // @match        https://www.youtube.com/watch?v=*
@@ -9,56 +9,66 @@
 // @grant        GM_setValue
 // ==/UserScript==
 
-(function() {
+(function () {
     'use strict';
+
     let Threshold = 5;
     let subscribedChannels = new Set();
 
     // Function to update subscribed channels
     function updateSubscribedChannels(allSubscriptions) {
-        subscribedChannels = new Set(Array.from(allSubscriptions).map(el =>
-                                                                      el.title.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-                                                                     ));
+        subscribedChannels = new Set(
+            Array.from(allSubscriptions).map((el) =>
+                el.title.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            )
+        );
         console.log('Updated Subscribed Channels:', Array.from(subscribedChannels)); // Debug log
     }
 
     // Function to load subscribed channels using the working code
     function loadSubscribedChannels() {
-        function printAllSubscriptions(allSubscriptions) {
-            console.log("List of all subscribed channels:");
-            updateSubscribedChannels(allSubscriptions); // Update subscribed channels
-        }
-
-        function clickGuideButton() {
-            const guideButton = document.querySelector("#guide-button");
-            if (guideButton) {
-                guideButton.click();
-                setTimeout(clickSubscriptionsButton, 1000);
-            } else {
-                setTimeout(clickGuideButton, 1000);
+        return new Promise((resolve) => {
+            function printAllSubscriptions(allSubscriptions) {
+                console.log('List of all subscribed channels:');
+                updateSubscribedChannels(allSubscriptions); // Update subscribed channels
+                resolve(); // Resolve when channels are loaded
             }
-        }
 
-        function clickSubscriptionsButton() {
-            const subscriptionsButton = document.querySelector("ytd-guide-collapsible-entry-renderer.style-scope:nth-child(8) > ytd-guide-entry-renderer:nth-child(1) > a:nth-child(1) > tp-yt-paper-item:nth-child(1)");
-            if (subscriptionsButton) {
-                subscriptionsButton.click();
-                setTimeout(getSubscriptions, 2000);
-            } else {
-                setTimeout(clickSubscriptionsButton, 1000);
+            function clickGuideButton() {
+                const guideButton = document.querySelector('#guide-button');
+                if (guideButton) {
+                    guideButton.click();
+                    setTimeout(clickSubscriptionsButton, 1000);
+                } else {
+                    setTimeout(clickGuideButton, 1000);
+                }
             }
-        }
 
-        function getSubscriptions() {
-            const allSubscriptions = document.querySelectorAll('ytd-guide-section-renderer:nth-child(2) a#endpoint.yt-simple-endpoint[href^="/@"]');
-            if (allSubscriptions.length > 0) {
-                printAllSubscriptions(allSubscriptions);
-            } else {
-                setTimeout(getSubscriptions, 1000);
+            function clickSubscriptionsButton() {
+                const subscriptionsButton = document.querySelector(
+                    'ytd-guide-collapsible-entry-renderer.style-scope:nth-child(8) > ytd-guide-entry-renderer:nth-child(1) > a:nth-child(1) > tp-yt-paper-item:nth-child(1)'
+                );
+                if (subscriptionsButton) {
+                    subscriptionsButton.click();
+                    setTimeout(getSubscriptions, 2000);
+                } else {
+                    setTimeout(clickSubscriptionsButton, 1000);
+                }
             }
-        }
 
-        clickGuideButton(); // Start the process
+            function getSubscriptions() {
+                const allSubscriptions = document.querySelectorAll(
+                    'ytd-guide-section-renderer:nth-child(2) a#endpoint.yt-simple-endpoint[href^="/@"]'
+                );
+                if (allSubscriptions.length > 0) {
+                    printAllSubscriptions(allSubscriptions);
+                } else {
+                    setTimeout(getSubscriptions, 1000);
+                }
+            }
+
+            clickGuideButton(); // Start the process
+        });
     }
 
     // Function to get the video ID from a thumbnail element
@@ -76,7 +86,9 @@
 
     // Function to get the channel name from a thumbnail element
     function getChannelName(thumbnailElement) {
-        const channelNameElement = thumbnailElement.querySelector('ytd-channel-name #text-container yt-formatted-string#text') || thumbnailElement.querySelector('#text');
+        const channelNameElement =
+            thumbnailElement.querySelector('ytd-channel-name #text-container yt-formatted-string#text') ||
+            thumbnailElement.querySelector('#text');
         return channelNameElement ? channelNameElement.textContent.trim() : null;
     }
 
@@ -95,7 +107,6 @@
         const liveBadge = thumbnailElement.querySelector('ytd-badge-supported-renderer .badge-style-type-live-now-alternate');
         return !!liveBadge;
     }
-
     // Function to check if the video has any watch progress
     function hasWatchProgress(element) {
         const progressBar = element.querySelector('ytd-thumbnail-overlay-resume-playback-renderer #progress');
@@ -112,8 +123,9 @@
 
             const parentElement = thumbnailElement.closest('ytd-rich-item-renderer') || thumbnailElement.closest('ytd-compact-video-renderer');
 
-            const normalizedChannelName = channelName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
+            // Check if the channel is in the subscribed list
             if (subscribedChannels.has(normalizedChannelName)) {
                 console.log('Subscribed channel, hiding:', channelName); // Debug log
                 if (parentElement) {
@@ -180,9 +192,9 @@
 
     // Run the script
     async function init() {
-        loadSubscribedChannels(); // Load subscribed channels using the working code
-        processExistingThumbnails();
-        observeDOMChanges();
+        await loadSubscribedChannels(); // Wait for the subscribed channels to be loaded
+        processExistingThumbnails(); // Process thumbnails after loading subscribed channels
+        observeDOMChanges(); // Start observing DOM changes after subscribed channels are loaded
     }
 
     init();
