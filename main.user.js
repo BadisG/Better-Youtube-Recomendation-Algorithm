@@ -249,8 +249,13 @@
             window.addEventListener('load', runEntireProcess);
         }
 
-        document.addEventListener('yt-navigate-start', runEntireProcess);
-        document.addEventListener('yt-navigate-finish', runEntireProcess);
+        document.addEventListener('yt-navigate-finish', (event) => {
+            if (event.data && event.data.endpoint && event.data.endpoint.query && event.data.endpoint.query.v) {
+                // Video playback, don't re-run the process
+                return;
+            }
+            runEntireProcess();
+        });
     }
 
     init();
