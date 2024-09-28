@@ -30,12 +30,12 @@
         const scrim = document.querySelector('#scrim');
 
         if (guideContainer) {
-            guideContainer.style.transition = 'opacity 0.3s';
+            guideContainer.style.transition = 'opacity 2s';
             guideContainer.style.opacity = transparent ? '0' : '1';
         }
 
         if (scrim) {
-            scrim.style.transition = 'opacity 0.3s';
+            scrim.style.transition = 'opacity 2s';
             scrim.style.opacity = transparent ? '0' : '1';
         }
     }
@@ -46,20 +46,21 @@
             function printAllSubscriptions(allSubscriptions) {
                 console.log('List of all subscribed channels:');
                 updateSubscribedChannels(allSubscriptions);
+                closeGuide();
                 setGuideTransparency(false);
                 resolve();
             }
 
-            function clickGuideButton() {
+            function openGuide() {
                 const guideButton = document.querySelector('#guide-button');
                 if (guideButton) {
-                    setGuideTransparency(true);
-                    guideButton.click();
-                    setTimeout(() => {
-                        clickSubscriptionsButton();
-                    }, 1000);
+                    const isOpen = guideButton.getAttribute('aria-pressed') === 'true';
+                    if (!isOpen) {
+                        guideButton.click();
+                    }
+                    setTimeout(clickSubscriptionsButton, 1000);
                 } else {
-                    setTimeout(clickGuideButton, 1000);
+                    setTimeout(openGuide, 1000);
                 }
             }
 
@@ -69,10 +70,7 @@
                 );
                 if (subscriptionsButton) {
                     subscriptionsButton.click();
-                    setTimeout(() => {
-                        setGuideTransparency(false);
-                        getSubscriptions();
-                    }, 2000);
+                    setTimeout(getSubscriptions, 2000);
                 } else {
                     setTimeout(clickSubscriptionsButton, 1000);
                 }
@@ -89,7 +87,40 @@
                 }
             }
 
-            clickGuideButton(); // Start the process
+            function closeGuide() {
+                const guideButton = document.querySelector('#guide-button');
+                const guideDrawer = document.querySelector('tp-yt-app-drawer#guide');
+
+                if (guideButton) {
+                    const isOpen = guideButton.getAttribute('aria-pressed') === 'true';
+
+                    if (isOpen) {
+                        guideButton.click();
+                        setTimeout(() => {
+                            if (guideButton.getAttribute('aria-pressed') === 'false') {
+                                console.log('Guide successfully closed after gathering subscriptions');
+                                // Ensure the 'opened' attribute is removed
+                                if (guideDrawer) {
+                                    guideDrawer.removeAttribute('opened');
+                                    console.log('Removed "opened" attribute from guide drawer');
+                                }
+                            } else {
+                                console.log('Failed to close guide. Retrying...');
+                                closeGuide();
+                            }
+                        }, 500);
+                    } else {
+                        console.log('Guide was already closed');
+                        // Ensure the 'opened' attribute is removed
+                        if (guideDrawer) {
+                            guideDrawer.removeAttribute('opened');
+                            console.log('Removed "opened" attribute from guide drawer');
+                        }
+                    }
+                }
+            }
+
+            openGuide(); // Start the process by ensuring the guide is open
         });
     }
 
@@ -212,12 +243,26 @@
         thumbnails.forEach(processThumbnail);
     }
 
-    // Run the script
-    async function init() {
+    // Function to run the entire process
+    async function runEntireProcess() {
         await loadSubscribedChannels();
-        processExistingThumbnails(); // Process thumbnails after loading subscribed channels
-        observeDOMChanges(); // Start observing DOM changes after subscribed channels are loaded
+        processExistingThumbnails();
+        observeDOMChanges();
     }
 
+    // Modified init function
+    function init() {
+        // Run the process after a short delay
+        setTimeout(runEntireProcess, 2000);
+
+        // Add event listeners for navigation within YouTube
+        document.addEventListener('yt-navigate-start', runEntireProcess);
+        document.addEventListener('yt-navigate-finish', runEntireProcess);
+    }
+
+    // Run init when the script loads
     init();
+
+    // Also run init when the page has fully loaded
+    window.addEventListener('load', init);
 })();
