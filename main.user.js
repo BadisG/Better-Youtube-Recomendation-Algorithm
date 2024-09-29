@@ -1,133 +1,61 @@
 // ==UserScript==
 // @name         Better Youtube Recommendation Algorithm
 // @namespace    http://tampermonkey.net/
-// @version      1.8
+// @version      2.0
 // @description  Count and hide YouTube thumbnails after 5 views, excluding subscribed channels, and hide playlist, live, and fully watched thumbnails.
-// @match        https://www.youtube.com/
-// @match        https://www.youtube.com/watch?v=*
+// @match        https://www.youtube.com/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // ==/UserScript==
 
-(function () {
+(function() {
     'use strict';
 
+    const DEBUG = true;
     let Threshold = 10;
     let subscribedChannels = new Set();
-    let guideProcessing = false; // Flag to prevent multiple executions
 
-    function updateSubscribedChannels(allSubscriptions) {
-        subscribedChannels = new Set(
-            Array.from(allSubscriptions).map((el) =>
-                el.title.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-            )
-        );
-        console.log('Updated Subscribed Channels:', Array.from(subscribedChannels));
-    }
-
-    function setGuideTransparency(transparent) {
-        const guideContainer = document.querySelector('#contentContainer');
-        const scrim = document.querySelector('#scrim');
-
-        if (guideContainer && window.location.pathname.includes('/watch')) {
-            guideContainer.style.transition = 'opacity 0s';
-            guideContainer.style.opacity = transparent ? '0' : '1';
-        }
-
-        if (scrim && window.location.pathname.includes('/watch')) {
-            scrim.style.transition = 'opacity 0s';
-            scrim.style.opacity = transparent ? '0' : '1';
+    function log(...args) {
+        if (DEBUG) {
+            console.log('[Better YouTube]', ...args);
         }
     }
 
+    function fetchSubscribedChannels() {
+        function updateSubscribedChannels() {
+            const channelElements = document.querySelectorAll('yt-formatted-string#text.style-scope.ytd-channel-name');
+            let newSubscribedChannels = [];
 
-    function loadSubscribedChannels() {
-        if (guideProcessing) return; // Prevent re-entrance
-        guideProcessing = true; // Set the flag
-
-        return new Promise((resolve) => {
-            function printAllSubscriptions(allSubscriptions) {
-                console.log('List of all subscribed channels:');
-                updateSubscribedChannels(allSubscriptions);
-                closeGuide();
-                setGuideTransparency(false);
-                guideProcessing = false; // Reset the flag
-                resolve();
-            }
-
-            function openGuide() {
-                console.log('%cOpening guide...', 'color: red;');
-                const guideButton = document.querySelector('#guide-button');
-                if (guideButton) {
-                    const isOpen = guideButton.getAttribute('aria-pressed') === 'true';
-                    if (!isOpen) {
-                        setGuideTransparency(true);
-                        guideButton.click();
-                    }
-                    setTimeout(clickSubscriptionsButton, 1000);
-                } else {
-                    setTimeout(openGuide, 1000);
+            channelElements.forEach(element => {
+                const channelName = element.textContent.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                if (!newSubscribedChannels.includes(channelName)) {
+                    newSubscribedChannels.push(channelName);
                 }
-            }
+            });
 
-            function clickSubscriptionsButton() {
-                const subscriptionsButton = document.querySelector(
-                    'ytd-guide-collapsible-entry-renderer.style-scope:nth-child(8) > ytd-guide-entry-renderer:nth-child(1) > a:nth-child(1) > tp-yt-paper-item:nth-child(1)'
-                );
-                if (subscriptionsButton) {
-                    subscriptionsButton.click();
-                    setTimeout(getSubscriptions, 2000);
-                } else {
-                    setTimeout(clickSubscriptionsButton, 1000);
+            GM_setValue('subscribedChannels', JSON.stringify(newSubscribedChannels));
+            subscribedChannels = new Set(newSubscribedChannels);
+
+            log('Fetched subscribed channels:', Array.from(subscribedChannels));
+        }
+
+        function waitForChannels() {
+            const observer = new MutationObserver((mutations, obs) => {
+                const channelList = document.querySelector('#items.style-scope.ytd-section-list-renderer');
+                if (channelList) {
+                    updateSubscribedChannels();
+                    obs.disconnect();
                 }
-            }
+            });
 
-            function getSubscriptions() {
-                const allSubscriptions = document.querySelectorAll(
-                    'ytd-guide-section-renderer:nth-child(2) a#endpoint.yt-simple-endpoint[href^="/@"]'
-                );
-                if (allSubscriptions.length > 0) {
-                    printAllSubscriptions(allSubscriptions);
-                } else {
-                    setTimeout(getSubscriptions, 1000);
-                }
-            }
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+        }
 
-            function closeGuide() {
-                console.log('%cClosing guide...', 'color: red;');
-                const guideButton = document.querySelector('#guide-button');
-                const guideDrawer = document.querySelector('tp-yt-app-drawer#guide');
-
-                if (guideButton) {
-                    const isOpen = guideButton.getAttribute('aria-pressed') === 'true';
-                    if (isOpen) {
-                        guideButton.click();
-                        setTimeout(() => {
-                            if (guideButton.getAttribute('aria-pressed') === 'false') {
-                                console.log('Guide successfully closed after gathering subscriptions');
-                                if (guideDrawer) {
-                                    guideDrawer.removeAttribute('opened');
-                                    console.log('Removed "opened" attribute from guide drawer');
-                                }
-                                setGuideTransparency(false);
-                            } else {
-                                console.log('Failed to close guide. Retrying...');
-                                closeGuide();
-                            }
-                        }, 500);
-                    } else {
-                        console.log('Guide was already closed');
-                        if (guideDrawer) {
-                            guideDrawer.removeAttribute('opened');
-                            console.log('Removed "opened" attribute from guide drawer');
-                        }
-                        setGuideTransparency(false);
-                    }
-                }
-            }
-
-            openGuide();
-        });
+        waitForChannels();
+        setInterval(updateSubscribedChannels, 60000);
     }
 
     function getVideoId(thumbnailElement) {
@@ -176,7 +104,10 @@
             const parentElement = thumbnailElement.closest('ytd-rich-item-renderer') || thumbnailElement.closest('ytd-compact-video-renderer');
             const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
+            log('Processing thumbnail:', videoId, normalizedChannelName);
+
             if (subscribedChannels.has(normalizedChannelName)) {
+                log('Subscribed channel, hiding');
                 if (parentElement) {
                     parentElement.style.display = 'none';
                 }
@@ -184,6 +115,7 @@
             }
 
             if (isPlaylist(thumbnailElement) || isLive(thumbnailElement) || hasWatchProgress(thumbnailElement)) {
+                log('Playlist, live, or watched video, hiding');
                 if (parentElement) {
                     parentElement.style.display = 'none';
                 }
@@ -194,11 +126,15 @@
             viewCount++;
             GM_setValue(videoId, viewCount);
 
+            log('View count:', viewCount);
+
             if (viewCount > Threshold) {
+                log('Exceeded threshold, hiding');
                 if (parentElement) {
                     parentElement.style.display = 'none';
                 }
             } else {
+                log('Below threshold, showing');
                 if (parentElement) {
                     parentElement.style.display = '';
                 }
@@ -231,32 +167,49 @@
 
     function processExistingThumbnails() {
         const thumbnails = document.querySelectorAll('ytd-rich-grid-media, ytd-compact-video-renderer');
+        log('Processing existing thumbnails:', thumbnails.length);
         thumbnails.forEach(processThumbnail);
     }
 
-    async function runEntireProcess() {
-        if (!guideProcessing) {
-            await loadSubscribedChannels();
+    function loadStoredSubscribedChannels() {
+        const storedChannels = GM_getValue('subscribedChannels');
+        if (storedChannels) {
+            subscribedChannels = new Set(JSON.parse(storedChannels));
+            log('Loaded stored subscribed channels:', Array.from(subscribedChannels));
+        } else {
+            log('No stored subscribed channels found');
+        }
+    }
+
+    function init() {
+        loadStoredSubscribedChannels();
+
+        if (window.location.pathname === '/feed/channels') {
+            log('On channels page, fetching subscribed channels');
+            fetchSubscribedChannels();
+        } else {
+            log('Processing thumbnails');
             processExistingThumbnails();
             observeDOMChanges();
         }
     }
 
-    function init() {
-        if (document.readyState === 'complete') {
-            runEntireProcess();
-        } else {
-            window.addEventListener('load', runEntireProcess);
-        }
-
-        document.addEventListener('yt-navigate-finish', (event) => {
-            if (event.data && event.data.endpoint && event.data.endpoint.query && event.data.endpoint.query.v) {
-                // Video playback, don't re-run the process
-                return;
-            }
-            runEntireProcess();
-        });
+    if (document.readyState === 'complete') {
+        init();
+    } else {
+        window.addEventListener('load', init);
     }
 
-    init();
+    document.addEventListener('yt-navigate-finish', (event) => {
+        if (event.detail && event.detail.url) {
+            log('Navigation detected:', event.detail.url);
+            if (event.detail.url.includes('/feed/channels')) {
+                fetchSubscribedChannels();
+            } else {
+                processExistingThumbnails();
+            }
+        }
+    });
+
+    log('Script initialized');
 })();
