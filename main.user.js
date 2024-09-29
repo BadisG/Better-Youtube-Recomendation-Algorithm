@@ -3,7 +3,9 @@
 // @namespace    http://tampermonkey.net/
 // @version      2.0
 // @description  Count and hide YouTube thumbnails after 10 views, excluding subscribed channels, and hide playlist, live, and watched thumbnails.
-// @match        https://www.youtube.com/*
+// @match        https://www.youtube.com/
+// @match        https://www.youtube.com/watch?v=*
+// @match        https://www.youtube.com/feed/channels
 // @grant        GM_getValue
 // @grant        GM_setValue
 // ==/UserScript==
