@@ -94,8 +94,13 @@
     }
 
     function hasWatchProgress(element) {
-        const progressBar = element.querySelector('ytd-thumbnail-overlay-resume-playback-renderer #progress');
-        return progressBar !== null && progressBar.style.width !== '0%';
+        const progressBar = element.querySelector('#overlays ytd-thumbnail-overlay-resume-playback-renderer #progress');
+        if (progressBar) {
+            const width = progressBar.style.width;
+            log('Progress bar found. Width:', width);
+            return width !== '' && width !== '0%';
+        }
+        return false;
     }
 
     function isUpcoming(thumbnailElement) {
@@ -195,13 +200,21 @@
                             }
                         }
                     });
+                } else if (mutation.type === 'attributes' && mutation.target.id === 'progress') {
+                    const thumbnailElement = mutation.target.closest('ytd-rich-item-renderer') || mutation.target.closest('ytd-compact-video-renderer');
+                    if (thumbnailElement) {
+                        processThumbnail(thumbnailElement);
+                    }
                 }
             });
         });
 
         observer.observe(document.body, {
             childList: true,
-            subtree: true
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['style'],
+            attributeOldValue: true
         });
     }
 
