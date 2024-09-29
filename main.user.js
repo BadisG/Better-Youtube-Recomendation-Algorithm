@@ -98,6 +98,11 @@
         return progressBar !== null && progressBar.style.width !== '0%';
     }
 
+    function isUpcoming(thumbnailElement) {
+        const upcomingBadge = thumbnailElement.querySelector('.thumbnail-overlay-badge-shape .badge-shape-wiz__text');
+        return upcomingBadge && upcomingBadge.textContent === 'UPCOMING';
+    }
+
     function processThumbnail(thumbnailElement) {
         const videoId = getVideoId(thumbnailElement);
         const channelName = getChannelName(thumbnailElement);
@@ -131,6 +136,15 @@
                 if (parentElement) {
                     parentElement.style.display = 'none';
                     parentElement.setAttribute('data-hide-reason', 'live');
+                }
+                return;
+            }
+
+            if (isUpcoming(thumbnailElement)) {
+                log('Upcoming video, hiding');
+                if (parentElement) {
+                    parentElement.style.display = 'none';
+                    parentElement.setAttribute('data-hide-reason', 'upcoming');
                 }
                 return;
             }
