@@ -5,7 +5,7 @@ It will work on both the [home page](https://www.youtube.com) and [where we usua
 
 # What does it do?
 It will hide recommended videos:
-- If their thumbnails have been seen more than 5 times
+- If their thumbnails have been seen more than 10 times [(this value can be changed here)](https://github.com/BadisG/Better-Youtube-Recomendation-Algorithm/blob/43c40fa9339c49c15a56428419902b87e7d7ad70/main.user.js#L15)
 - If they are from YouTube channels you are subscribed to
 - If they are playlists
 - If they are music mixes
