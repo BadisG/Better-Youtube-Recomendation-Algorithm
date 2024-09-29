@@ -20,5 +20,5 @@ It will hide recommended videos:
 ## 2) Install the script there
 [Click on this link](https://github.com/BadisG/Better-Youtube-Recomendation-Algorithm/raw/refs/heads/main/main.user.js)
 
-## 3) Load youtube subscribers page
+## 3) Load the youtube subscribers page
 [Go there](https://www.youtube.com/feed/channels) and wait for the page to be fully loaded. This way you'll fetch the list of your subscribed channels, it'll be helpful to filter out videos that are from those channels. You only have to do it once (Even though it is suggested to do this from time to time to update that list).
