@@ -55,7 +55,7 @@
         }
 
         waitForChannels();
-        setInterval(updateSubscribedChannels, 60000);
+        setInterval(updateSubscribedChannels, 6000);
     }
 
     function getVideoId(thumbnailElement) {
