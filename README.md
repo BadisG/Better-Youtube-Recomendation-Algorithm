@@ -10,6 +10,7 @@ It will hide recommended videos:
 - If they are playlists
 - If they are music mixes
 - If they have a progress bar (indicating they have already been watched)
+- If they are Upcoming
 
 # How to install
 ## 1) Install a user script manager:
