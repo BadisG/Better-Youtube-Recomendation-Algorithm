@@ -110,14 +110,35 @@
                 log('Subscribed channel, hiding');
                 if (parentElement) {
                     parentElement.style.display = 'none';
+                    parentElement.setAttribute('data-hide-reason', 'subscribed');
                 }
                 return;
             }
 
-            if (isPlaylist(thumbnailElement) || isLive(thumbnailElement) || hasWatchProgress(thumbnailElement)) {
-                log('Playlist, live, or watched video, hiding');
+            if (isPlaylist(thumbnailElement)) {
+                log('Playlist video, hiding');
                 if (parentElement) {
                     parentElement.style.display = 'none';
+                    parentElement.setAttribute('data-hide-reason', 'playlist');
+                }
+                return;
+            }
+
+            if (isLive(thumbnailElement)) {
+                log('Live video, hiding');
+                if (parentElement) {
+                    parentElement.style.display = 'none';
+                    parentElement.setAttribute('data-hide-reason', 'live');
+                }
+                return;
+            }
+
+            // Check if the video has been watched first
+            if (hasWatchProgress(thumbnailElement)) {
+                log('Watched video, hiding');
+                if (parentElement) {
+                    parentElement.style.display = 'none';
+                    parentElement.setAttribute('data-hide-reason', 'watched');
                 }
                 return;
             }
@@ -132,15 +153,18 @@
                 log('Exceeded threshold, hiding');
                 if (parentElement) {
                     parentElement.style.display = 'none';
+                    parentElement.setAttribute('data-hide-reason', 'threshold');
                 }
             } else {
                 log('Below threshold, showing');
                 if (parentElement) {
                     parentElement.style.display = '';
+                    parentElement.removeAttribute('data-hide-reason');
                 }
             }
         }
     }
+
 
     function observeDOMChanges() {
         const observer = new MutationObserver((mutations) => {
