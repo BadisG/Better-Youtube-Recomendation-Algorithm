@@ -61,23 +61,43 @@
     }
 
     function getVideoId(thumbnailElement) {
-        const link = thumbnailElement.querySelector('a#thumbnail') || thumbnailElement.querySelector('a.yt-simple-endpoint');
-        if (link) {
-            const href = link.getAttribute('href');
-            if (href) {
-                const match = href.match(/[?&]v=([^&]+)/);
-                return match ? match[1] : null;
+        if (window.location.href.includes("watch?v=")) {
+            // On an individual video page
+            const link = thumbnailElement.querySelector('a.yt-simple-endpoint');
+            if (link) {
+                const href = link.getAttribute('href');
+                if (href) {
+                    const match = href.match(/[?&]v=([^&]+)/);
+                    return match ? match[1] : null;
+                }
+            }
+        } else if (window.location.href === "https://www.youtube.com/") {
+            // On the YouTube homepage
+            const link = thumbnailElement.querySelector('a.yt-lockup-metadata-view-model-wiz__title');
+            if (link) {
+                const href = link.getAttribute('href');
+                if (href) {
+                    const match = href.match(/[?&]v=([^&]+)/);
+                    return match ? match[1] : null;
+                }
             }
         }
         return null;
     }
 
     function getChannelName(thumbnailElement) {
-        const channelNameElement =
-            thumbnailElement.querySelector('ytd-channel-name #text-container yt-formatted-string#text') ||
-            thumbnailElement.querySelector('#text');
-        return channelNameElement ? channelNameElement.textContent.trim() : null;
+        if (window.location.href.includes("watch?v=")) {
+            // On an individual video page
+            const channelNameElement = thumbnailElement.querySelector('ytd-channel-name #text-container yt-formatted-string#text');
+            return channelNameElement ? channelNameElement.textContent.trim() : null;
+        } else if (window.location.href === "https://www.youtube.com/") {
+            // On the YouTube homepage
+            const channelNameElement = thumbnailElement.querySelector('yt-lockup-metadata-view-model yt-content-metadata-view-model .yt-core-attributed-string__link');
+            return channelNameElement ? channelNameElement.textContent.trim() : null;
+        }
+        return null;
     }
+
 
     function isPlaylist(thumbnailElement) {
         const playlistLabel = thumbnailElement.querySelector('ytd-thumbnail-overlay-bottom-panel-renderer yt-formatted-string');
@@ -219,7 +239,7 @@
     }
 
     function processExistingThumbnails() {
-        const thumbnails = document.querySelectorAll('ytd-rich-grid-media, ytd-compact-video-renderer');
+        const thumbnails = document.querySelectorAll('ytd-rich-item-renderer, ytd-compact-video-renderer');
         log('Processing existing thumbnails:', thumbnails.length);
         thumbnails.forEach(processThumbnail);
     }
