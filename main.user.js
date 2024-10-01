@@ -272,6 +272,14 @@
         }
     }
 
+    function removeRichSectionRenderers() {
+        const richSectionRenderers = document.querySelectorAll('ytd-rich-section-renderer');
+        richSectionRenderers.forEach(renderer => {
+            renderer.remove();
+        });
+        log('Removed', richSectionRenderers.length, 'ytd-rich-section-renderer elements');
+    }
+
     function init() {
         loadStoredSubscribedChannels();
 
@@ -282,6 +290,9 @@
             log('Processing thumbnails');
             processExistingThumbnails();
             observeDOMChanges();
+
+            // Add this line to remove rich section renderers
+            removeRichSectionRenderers();
         }
     }
 
