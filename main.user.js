@@ -98,18 +98,6 @@
         return null;
     }
 
-
-    // Function to detect whether the current page is a playlist thumbnail
-    function isPlaylist(thumbnailElement) {
-        const playlistLabel = thumbnailElement.querySelector('ytd-thumbnail-overlay-bottom-panel-renderer yt-formatted-string');
-        if (playlistLabel) {
-            const labelText = playlistLabel.textContent.trim().toLowerCase();
-            return /\d+\s+videos/.test(labelText) || labelText === 'mix';
-        }
-        return false;
-    }
-
-
     function isLive(thumbnailElement) {
         const liveBadge = thumbnailElement.querySelector('ytd-badge-supported-renderer .badge-style-type-live-now-alternate');
         return !!liveBadge;
@@ -146,84 +134,70 @@
         return upcomingBadge && upcomingBadge.textContent === 'UPCOMING';
     }
 
+
+    // Function to detect whether the current page is a playlist thumbnail
+    function isPlaylist(thumbnailElement) {
+        const playlistLabel = thumbnailElement.querySelector('ytd-playlist-thumbnail ytd-thumbnail-overlay-bottom-panel-renderer yt-formatted-string');
+        if (playlistLabel) {
+            const labelText = playlistLabel.textContent.trim().toLowerCase();
+            return /\d+\s+videos?/.test(labelText) || labelText === 'mix';
+        }
+        return false;
+    }
+
+    function hideElement(element, reason) {
+        if (element) {
+            element.style.display = 'none';
+            element.setAttribute('data-hide-reason', reason);
+        }
+        log(`${reason.charAt(0).toUpperCase() + reason.slice(1)} video, hiding`);
+    }
+
+    function showElement(element) {
+        if (element) {
+            element.style.display = '';
+            element.removeAttribute('data-hide-reason');
+        }
+        log('Below threshold, showing');
+    }
+
     function processThumbnail(thumbnailElement) {
         const videoId = getVideoId(thumbnailElement);
         const channelName = getChannelName(thumbnailElement);
 
-        if (videoId && channelName) {
-            const parentElement = thumbnailElement.closest('ytd-rich-item-renderer') || thumbnailElement.closest('ytd-compact-video-renderer');
-            const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        if (!videoId || !channelName) return;
 
-            log('Processing thumbnail:', videoId, normalizedChannelName);
+        const parentElement = thumbnailElement.closest('ytd-rich-item-renderer') || thumbnailElement.closest('ytd-compact-video-renderer');
+        const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-            if (subscribedChannels.has(normalizedChannelName)) {
-                log('Subscribed channel, hiding');
-                if (parentElement) {
-                    parentElement.style.display = 'none';
-                    parentElement.setAttribute('data-hide-reason', 'subscribed');
-                }
+        log('Processing thumbnail:', videoId, normalizedChannelName);
+
+        const hideReasons = [
+            { condition: () => subscribedChannels.has(normalizedChannelName), reason: 'subscribed' },
+            { condition: () => isPlaylist(thumbnailElement), reason: 'playlist' },
+            { condition: () => isLive(thumbnailElement), reason: 'live' },
+            { condition: () => isUpcoming(thumbnailElement), reason: 'upcoming' },
+            { condition: () => hasWatchProgress(thumbnailElement), reason: 'watched' },
+        ];
+
+        for (const { condition, reason } of hideReasons) {
+            if (condition()) {
+                hideElement(parentElement, reason);
                 return;
-            }
-
-            if (isPlaylist(thumbnailElement)) {
-                log('Playlist video, hiding');
-                if (parentElement) {
-                    parentElement.style.display = 'none';
-                    parentElement.setAttribute('data-hide-reason', 'playlist');
-                }
-                return;
-            }
-
-            if (isLive(thumbnailElement)) {
-                log('Live video, hiding');
-                if (parentElement) {
-                    parentElement.style.display = 'none';
-                    parentElement.setAttribute('data-hide-reason', 'live');
-                }
-                return;
-            }
-
-            if (isUpcoming(thumbnailElement)) {
-                log('Upcoming video, hiding');
-                if (parentElement) {
-                    parentElement.style.display = 'none';
-                    parentElement.setAttribute('data-hide-reason', 'upcoming');
-                }
-                return;
-            }
-
-            // Check if the video has been watched first
-            if (hasWatchProgress(thumbnailElement)) {
-                log('Watched video, hiding');
-                if (parentElement) {
-                    parentElement.style.display = 'none';
-                    parentElement.setAttribute('data-hide-reason', 'watched');
-                }
-                return;
-            }
-
-            let viewCount = GM_getValue(videoId, 0);
-            viewCount++;
-            GM_setValue(videoId, viewCount);
-
-            log('View count:', viewCount);
-
-            if (viewCount > Threshold) {
-                log('Exceeded threshold, hiding');
-                if (parentElement) {
-                    parentElement.style.display = 'none';
-                    parentElement.setAttribute('data-hide-reason', 'threshold');
-                }
-            } else {
-                log('Below threshold, showing');
-                if (parentElement) {
-                    parentElement.style.display = '';
-                    parentElement.removeAttribute('data-hide-reason');
-                }
             }
         }
-    }
 
+        let viewCount = GM_getValue(videoId, 0) + 1;
+        GM_setValue(videoId, viewCount);
+
+        log('View count:', viewCount);
+
+        if (viewCount > Threshold) {
+            hideElement(parentElement, 'threshold');
+        } else {
+            showElement(parentElement);
+        }
+    }
 
     function observeDOMChanges() {
         const observer = new MutationObserver((mutations) => {
