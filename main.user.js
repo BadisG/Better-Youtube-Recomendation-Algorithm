@@ -99,8 +99,8 @@
     }
 
     function isLive(thumbnailElement) {
-        const liveBadge = thumbnailElement.querySelector('ytd-badge-supported-renderer .badge-style-type-live-now-alternate');
-        return !!liveBadge;
+        const liveBadge = thumbnailElement.querySelector('yt-thumbnail-overlay-badge-view-model .badge-shape-wiz__text');
+        return liveBadge && liveBadge.textContent.trim().toUpperCase() === 'LIVE';
     }
 
     function hasWatchProgress(element) {
