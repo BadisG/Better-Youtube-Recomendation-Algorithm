@@ -130,8 +130,8 @@
 
 
     function isUpcoming(thumbnailElement) {
-        const upcomingBadge = thumbnailElement.querySelector('.thumbnail-overlay-badge-shape .badge-shape-wiz__text');
-        return upcomingBadge && upcomingBadge.textContent === 'UPCOMING';
+        const upcomingBadge = thumbnailElement.querySelector('yt-thumbnail-overlay-badge-view-model .badge-shape-wiz__text');
+        return upcomingBadge && upcomingBadge.textContent.trim().toUpperCase() === 'UPCOMING';
     }
 
 
