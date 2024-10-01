@@ -99,6 +99,7 @@
     }
 
 
+    // Function to detect whether the current page is a playlist thumbnail
     function isPlaylist(thumbnailElement) {
         const playlistLabel = thumbnailElement.querySelector('ytd-thumbnail-overlay-bottom-panel-renderer yt-formatted-string');
         if (playlistLabel) {
@@ -108,20 +109,37 @@
         return false;
     }
 
+
     function isLive(thumbnailElement) {
         const liveBadge = thumbnailElement.querySelector('ytd-badge-supported-renderer .badge-style-type-live-now-alternate');
         return !!liveBadge;
     }
 
     function hasWatchProgress(element) {
-        const progressBar = element.querySelector('#overlays ytd-thumbnail-overlay-resume-playback-renderer #progress');
-        if (progressBar) {
-            const width = progressBar.style.width;
-            log('Progress bar found. Width:', width);
-            return width !== '' && width !== '0%';
+        if (window.location.href === 'https://www.youtube.com/') {
+            // Logic for YouTube homepage
+            const progressBar = element.querySelector('yt-thumbnail-overlay-progress-bar-view-model');
+            if (progressBar) {
+                const progressSegment = progressBar.querySelector('.YtThumbnailOverlayProgressBarHostWatchedProgressBarSegment');
+                if (progressSegment) {
+                    const width = progressSegment.style.width;
+                    console.log('Progress bar found on homepage. Width:', width);
+                    return width !== '' && width !== '0%';
+                }
+            }
+            return false;
+        } else if (window.location.href.startsWith('https://www.youtube.com/watch')) {
+            // Logic for individual video pages
+            const progressBar = element.querySelector('#overlays ytd-thumbnail-overlay-resume-playback-renderer #progress');
+            if (progressBar) {
+                const width = progressBar.style.width;
+                console.log('Progress bar found on video page. Width:', width);
+                return width !== '' && width !== '0%';
+            }
+            return false;
         }
-        return false;
     }
+
 
     function isUpcoming(thumbnailElement) {
         const upcomingBadge = thumbnailElement.querySelector('.thumbnail-overlay-badge-shape .badge-shape-wiz__text');
