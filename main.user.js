@@ -137,12 +137,17 @@
 
     // Function to detect whether the current page is a playlist thumbnail
     function isPlaylist(thumbnailElement) {
-        const playlistLabel = thumbnailElement.querySelector('ytd-playlist-thumbnail ytd-thumbnail-overlay-bottom-panel-renderer yt-formatted-string');
-        if (playlistLabel) {
-            const labelText = playlistLabel.textContent.trim().toLowerCase();
-            return /\d+\s+videos?/.test(labelText) || labelText === 'mix';
+        const playlistThumbnail = thumbnailElement.querySelector('#playlist-thumbnails');
+        const playlistIcon = thumbnailElement.querySelector('ytd-thumbnail-overlay-bottom-panel-renderer yt-icon');
+        const playlistText = thumbnailElement.querySelector('ytd-thumbnail-overlay-bottom-panel-renderer yt-formatted-string');
+
+        if (playlistThumbnail || (playlistIcon && playlistText)) {
+            console.log('%cYES IT\'S A PLAYLIST', 'color: green');
+            return true;
+        } else {
+            console.log('%cNO, IT\'S NOT A PLAYLIST', 'color: red');
+            return false;
         }
-        return false;
     }
 
     function hideElement(element, reason) {
@@ -162,22 +167,37 @@
     }
 
     function processThumbnail(thumbnailElement) {
-        const videoId = getVideoId(thumbnailElement);
-        const channelName = getChannelName(thumbnailElement);
-
-        if (!videoId || !channelName) return;
-
         const parentElement = thumbnailElement.closest('ytd-rich-item-renderer') || thumbnailElement.closest('ytd-compact-video-renderer');
+
+        if (!parentElement) {
+            log('No parent element found, skipping');
+            return;
+        }
+
+        log('Processing thumbnail:', parentElement);
+
+        if (isPlaylist(parentElement)) {
+            hideElement(parentElement, 'playlist');
+            return;
+        }
+
+        const videoId = getVideoId(parentElement);
+        const channelName = getChannelName(parentElement);
+
+        if (!videoId || !channelName) {
+            log('Missing video ID or channel name, skipping');
+            return;
+        }
+
         const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-        log('Processing thumbnail:', videoId, normalizedChannelName);
+        log('Video ID:', videoId, 'Channel:', normalizedChannelName);
 
         const hideReasons = [
             { condition: () => subscribedChannels.has(normalizedChannelName), reason: 'subscribed' },
-            { condition: () => isPlaylist(thumbnailElement), reason: 'playlist' },
-            { condition: () => isLive(thumbnailElement), reason: 'live' },
-            { condition: () => isUpcoming(thumbnailElement), reason: 'upcoming' },
-            { condition: () => hasWatchProgress(thumbnailElement), reason: 'watched' },
+            { condition: () => isLive(parentElement), reason: 'live' },
+            { condition: () => isUpcoming(parentElement), reason: 'upcoming' },
+            { condition: () => hasWatchProgress(parentElement), reason: 'watched' },
         ];
 
         for (const { condition, reason } of hideReasons) {
