@@ -23,6 +23,13 @@
         }
     }
 
+    function shouldRunOnCurrentPage() {
+        const url = window.location.href;
+        return url === 'https://www.youtube.com/' ||
+            url.startsWith('https://www.youtube.com/watch?') ||
+            url === 'https://www.youtube.com/feed/channels';
+    }
+
     function fetchSubscribedChannels() {
         function updateSubscribedChannels() {
             const channelElements = document.querySelectorAll('yt-formatted-string#text.style-scope.ytd-channel-name');
@@ -167,6 +174,10 @@
     }
 
     function processThumbnail(thumbnailElement) {
+        if (!shouldRunOnCurrentPage()) {
+            log('Not on a target page, skipping processing');
+            return;
+        }
         const parentElement = thumbnailElement.closest('ytd-rich-item-renderer') || thumbnailElement.closest('ytd-compact-video-renderer');
 
         if (!parentElement) {
@@ -272,10 +283,12 @@
         if (window.location.pathname === '/feed/channels') {
             log('On channels page, fetching subscribed channels');
             fetchSubscribedChannels();
-        } else {
+        } else if (shouldRunOnCurrentPage()) {
             log('Processing thumbnails');
             processExistingThumbnails();
             observeDOMChanges();
+        } else {
+            log('Not on a target page, script inactive');
         }
     }
 
@@ -290,8 +303,10 @@
             log('Navigation detected:', event.detail.url);
             if (event.detail.url.includes('/feed/channels')) {
                 fetchSubscribedChannels();
-            } else {
+            } else if (shouldRunOnCurrentPage()) {
                 processExistingThumbnails();
+            } else {
+                log('Navigated to a non-target page, script inactive');
             }
         }
     });
