@@ -105,20 +105,30 @@
     }
 
 
-    function isNormalVideo(thumbnailElement) {
-        const richItemRenderer = thumbnailElement.closest('ytd-rich-item-renderer');
-        if (!richItemRenderer) return false;
+    function isNormalVideo(element) {
+        // HOME PAGE
+        const isRichItem = element.tagName === 'YTD-RICH-ITEM-RENDERER';
+        // INDIVIDUAL VIDEO
+        const isCompactVideo = element.tagName === 'YTD-COMPACT-VIDEO-RENDERER';
 
-        const ariaLabel = richItemRenderer.querySelector('[aria-label]');
+        if (!isRichItem && !isCompactVideo) return false;
+
+        let ariaLabel;
+        if (isRichItem) {
+            ariaLabel = element.querySelector('[aria-label]');
+        } else if (isCompactVideo) {
+            ariaLabel = element.querySelector('#video-title');
+        }
+
         if (!ariaLabel) return false;
 
-        const label = ariaLabel.getAttribute('aria-label').toLowerCase();
+        const label = (ariaLabel.getAttribute('aria-label') || ariaLabel.textContent).toLowerCase();
 
         // Check if it's a normal video (has duration)
         const isNormal = label.includes('minutes') || label.includes('seconds');
 
         // Check if the video has been watched
-        const isWatched = richItemRenderer.querySelector('#progress');
+        const isWatched = element.querySelector('#progress');
 
         // Return true only if it's a normal video and hasn't been watched
         return isNormal && !isWatched;
