@@ -80,16 +80,15 @@
             }
         } else if (window.location.href === "https://www.youtube.com/") {
             // On the YouTube homepage
-            const link = thumbnailElement.querySelector('a.yt-lockup-metadata-view-model-wiz__title');
-            if (link) {
-                const href = link.getAttribute('href');
-                if (href) {
-                    const match = href.match(/[?&]v=([^&]+)/);
-                    return match ? match[1] : null;
-                }
+            const videoLink = thumbnailElement.querySelector('a[href^="/watch?v="]');
+            if (videoLink) {
+                const href = videoLink.getAttribute('href');
+                // Extract the video ID using a regular expression
+                const match = href.match(/[?&]v=([^&]+)/);
+                return match ? match[1] : null;
             }
+            return null;
         }
-        return null;
     }
 
     function getChannelName(thumbnailElement) {
@@ -98,12 +97,19 @@
             const channelNameElement = thumbnailElement.querySelector('ytd-channel-name #text-container yt-formatted-string#text');
             return channelNameElement ? channelNameElement.textContent.trim() : null;
         } else if (window.location.href === "https://www.youtube.com/") {
-            // On the YouTube homepage
-            const channelNameElement = thumbnailElement.querySelector('yt-lockup-metadata-view-model yt-content-metadata-view-model .yt-core-attributed-string__link');
-            return channelNameElement ? channelNameElement.textContent.trim() : null;
+            // Find all anchor tags in the thumbnail element
+            const possibleChannelLinks = thumbnailElement.querySelectorAll('a[href^="/@"]');
+            for (const link of possibleChannelLinks) {
+                // Check if the link has text content that looks like a channel name
+                if (link.textContent && link.textContent.trim().length > 0) {
+                    return link.textContent.trim();
+                }
+            }
+
+            return null;
         }
-        return null;
     }
+
 
     function isLive(thumbnailElement) {
         const liveBadge = thumbnailElement.querySelector('yt-thumbnail-overlay-badge-view-model .badge-shape-wiz__text');
@@ -187,10 +193,10 @@
 
         log('Processing thumbnail:', parentElement);
 
-        if (isPlaylist(parentElement)) {
-            hideElement(parentElement, 'playlist');
-            return;
-        }
+       // if (isPlaylist(parentElement)) {
+           // hideElement(parentElement, 'playlist');
+           // return;
+       // }
 
         const videoId = getVideoId(parentElement);
         const channelName = getChannelName(parentElement);
