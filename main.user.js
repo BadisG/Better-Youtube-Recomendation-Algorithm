@@ -114,11 +114,7 @@
         if (!isRichItem && !isCompactVideo) return false;
 
         let ariaLabel;
-        if (isRichItem) {
-            ariaLabel = element.querySelector('[aria-label]');
-        } else if (isCompactVideo) {
-            ariaLabel = element.querySelector('#video-title');
-        }
+        ariaLabel = element.querySelector('[aria-label]');
 
         if (!ariaLabel) return false;
 
@@ -173,7 +169,7 @@
 
         const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-        console.log('Video ID:', videoId, 'Channel:', normalizedChannelName);
+        console.log('Video ID:', videoId, '| Channel:', normalizedChannelName);
 
         if (subscribedChannels.has(normalizedChannelName)) {
             hideElement(parentElement, 'subscribed');
