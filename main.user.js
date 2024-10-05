@@ -62,27 +62,14 @@
     }
 
     function getVideoId(thumbnailElement) {
-        if (window.location.href.includes("watch?v=")) {
-            // On an individual video page
-            const link = thumbnailElement.querySelector('a.yt-simple-endpoint');
-            if (link) {
-                const href = link.getAttribute('href');
-                if (href) {
-                    const match = href.match(/[?&]v=([^&]+)/);
-                    return match ? match[1] : null;
-                }
-            }
-        } else if (window.location.href === "https://www.youtube.com/") {
-            // On the YouTube homepage
-            const videoLink = thumbnailElement.querySelector('a[href^="/watch?v="]');
-            if (videoLink) {
-                const href = videoLink.getAttribute('href');
-                // Extract the video ID using a regular expression
-                const match = href.match(/[?&]v=([^&]+)/);
-                return match ? match[1] : null;
-            }
-            return null;
+        const videoLink = thumbnailElement.querySelector('a[href^="/watch?v="]');
+        if (videoLink) {
+            const href = videoLink.getAttribute('href');
+            // Extract the video ID using a regular expression
+            const match = href.match(/[?&]v=([^&]+)/);
+            return match ? match[1] : null;
         }
+        return null;
     }
 
     function getChannelName(thumbnailElement) {
@@ -92,14 +79,13 @@
             return channelNameElement ? channelNameElement.textContent.trim() : null;
         } else if (window.location.href === "https://www.youtube.com/") {
             // Find all anchor tags in the thumbnail element
-            const possibleChannelLinks = thumbnailElement.querySelectorAll('a[href^="/@"]');
-            for (const link of possibleChannelLinks) {
-                // Check if the link has text content that looks like a channel name
-                if (link.textContent && link.textContent.trim().length > 0) {
-                    return link.textContent.trim();
-                }
+        const possibleChannelLinks = thumbnailElement.querySelectorAll('a[href^="/@"]');
+        for (const link of possibleChannelLinks) {
+            // Check if the link has text content that looks like a channel name
+            if (link.textContent && link.textContent.trim().length > 0) {
+                return link.textContent.trim();
             }
-
+        }
             return null;
         }
     }
