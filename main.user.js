@@ -111,9 +111,13 @@
     }
 
 
-    function isLive(thumbnailElement) {
-        const liveBadge = thumbnailElement.querySelector('yt-thumbnail-overlay-badge-view-model .badge-shape-wiz__text');
-        return liveBadge && liveBadge.textContent.trim().toUpperCase() === 'LIVE';
+    function isLive(element) {
+        const liveIndicators = [
+            // Check for aria-label="LIVE"
+            () => element.querySelector('[aria-label="LIVE"]'),
+        ];
+
+        return liveIndicators.some(indicator => indicator());
     }
 
     function hasWatchProgress(element) {
