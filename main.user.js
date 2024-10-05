@@ -17,12 +17,6 @@
     let Threshold = 10;
     let subscribedChannels = new Set();
 
-    function log(...args) {
-        if (DEBUG) {
-            console.log('[Better YouTube]', ...args);
-        }
-    }
-
     function shouldRunOnCurrentPage() {
         const url = window.location.href;
         return url === 'https://www.youtube.com/' ||
@@ -45,7 +39,7 @@
             GM_setValue('subscribedChannels', JSON.stringify(newSubscribedChannels));
             subscribedChannels = new Set(newSubscribedChannels);
 
-            log('Fetched subscribed channels:', Array.from(subscribedChannels));
+            console.log('Fetched subscribed channels:', Array.from(subscribedChannels));
         }
 
         function waitForChannels() {
@@ -111,68 +105,33 @@
     }
 
 
-    function isLive(element) {
-        const liveIndicators = [
-            // Check for aria-label="LIVE"
-            () => element.querySelector('[aria-label="LIVE"]'),
-        ];
+    function isNormalVideo(thumbnailElement) {
+        const richItemRenderer = thumbnailElement.closest('ytd-rich-item-renderer');
+        if (!richItemRenderer) return false;
 
-        return liveIndicators.some(indicator => indicator());
+        const ariaLabel = richItemRenderer.querySelector('[aria-label]');
+        if (!ariaLabel) return false;
+
+        const label = ariaLabel.getAttribute('aria-label').toLowerCase();
+
+        // Check if it's a normal video (has duration)
+        const isNormal = label.includes('minutes') || label.includes('seconds');
+
+        // Check if the video has been watched
+        const isWatched = richItemRenderer.querySelector('#progress');
+
+        // Return true only if it's a normal video and hasn't been watched
+        return isNormal && !isWatched;
     }
 
-    function hasWatchProgress(element) {
-        if (window.location.href === 'https://www.youtube.com/') {
-            // Logic for YouTube homepage
-            const progressBar = element.querySelector('yt-thumbnail-overlay-progress-bar-view-model');
-            if (progressBar) {
-                const progressSegment = progressBar.querySelector('.YtThumbnailOverlayProgressBarHostWatchedProgressBarSegment');
-                if (progressSegment) {
-                    const width = progressSegment.style.width;
-                    console.log('Progress bar found on homepage. Width:', width);
-                    return width !== '' && width !== '0%';
-                }
-            }
-            return false;
-        } else if (window.location.href.startsWith('https://www.youtube.com/watch')) {
-            // Logic for individual video pages
-            const progressBar = element.querySelector('#overlays ytd-thumbnail-overlay-resume-playback-renderer #progress');
-            if (progressBar) {
-                const width = progressBar.style.width;
-                console.log('Progress bar found on video page. Width:', width);
-                return width !== '' && width !== '0%';
-            }
-            return false;
-        }
-    }
-
-
-    function isUpcoming(thumbnailElement) {
-        const upcomingBadge = thumbnailElement.querySelector('yt-thumbnail-overlay-badge-view-model .badge-shape-wiz__text');
-        return upcomingBadge && upcomingBadge.textContent.trim().toUpperCase() === 'UPCOMING';
-    }
-
-
-    // Function to detect whether the current page is a playlist thumbnail
-    function isPlaylist(thumbnailElement) {
-        const playlistThumbnail = thumbnailElement.querySelector('#playlist-thumbnails');
-        const playlistIcon = thumbnailElement.querySelector('ytd-thumbnail-overlay-bottom-panel-renderer yt-icon');
-        const playlistText = thumbnailElement.querySelector('ytd-thumbnail-overlay-bottom-panel-renderer yt-formatted-string');
-
-        if (playlistThumbnail || (playlistIcon && playlistText)) {
-            console.log('%cYES IT\'S A PLAYLIST', 'color: green');
-            return true;
-        } else {
-            console.log('%cNO, IT\'S NOT A PLAYLIST', 'color: red');
-            return false;
-        }
-    }
 
     function hideElement(element, reason) {
         if (element) {
             element.style.display = 'none';
             element.setAttribute('data-hide-reason', reason);
         }
-        log(`${reason.charAt(0).toUpperCase() + reason.slice(1)} video, hiding`);
+        console.log(reason[0].toUpperCase() + reason.slice(1) + ' \x1b[31m%s\x1b[0m', 'HIDING');
+
     }
 
     function showElement(element) {
@@ -180,61 +139,49 @@
             element.style.display = '';
             element.removeAttribute('data-hide-reason');
         }
-        log('Below threshold, showing');
+        console.log('Below threshold: \x1b[32m%s\x1b[0m', 'SHOWING');
     }
 
     function processThumbnail(thumbnailElement) {
         if (!shouldRunOnCurrentPage()) {
-            log('Not on a target page, skipping processing');
+            console.log('Not on a target page, skipping processing');
             return;
         }
         const parentElement = thumbnailElement.closest('ytd-rich-item-renderer') || thumbnailElement.closest('ytd-compact-video-renderer');
 
         if (!parentElement) {
-            log('No parent element found, skipping');
+            console.log('No parent element found, skipping');
             return;
         }
-
-        log('Processing thumbnail:', parentElement);
-
-       // if (isPlaylist(parentElement)) {
-           // hideElement(parentElement, 'playlist');
-           // return;
-       // }
-
         const videoId = getVideoId(parentElement);
         const channelName = getChannelName(parentElement);
 
         if (!videoId || !channelName) {
-            log('Missing video ID or channel name, skipping');
+            hideElement(parentElement, 'missing video ID or channel name');
             return;
         }
 
         const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-        log('Video ID:', videoId, 'Channel:', normalizedChannelName);
+        console.log('Video ID:', videoId, 'Channel:', normalizedChannelName);
 
-        const hideReasons = [
-            { condition: () => subscribedChannels.has(normalizedChannelName), reason: 'subscribed' },
-            { condition: () => isLive(parentElement), reason: 'live' },
-            { condition: () => isUpcoming(parentElement), reason: 'upcoming' },
-            { condition: () => hasWatchProgress(parentElement), reason: 'watched' },
-        ];
+        if (subscribedChannels.has(normalizedChannelName)) {
+            hideElement(parentElement, 'subscribed');
+            return;
+        }
 
-        for (const { condition, reason } of hideReasons) {
-            if (condition()) {
-                hideElement(parentElement, reason);
-                return;
-            }
+        if (!isNormalVideo(parentElement)) {
+            hideElement(parentElement, 'Not a normal video:');
+            return;
         }
 
         let viewCount = GM_getValue(videoId, 0) + 1;
         GM_setValue(videoId, viewCount);
 
-        log('View count:', viewCount);
+        console.log('View count:', viewCount);
 
         if (viewCount > Threshold) {
-            hideElement(parentElement, 'threshold');
+            hideElement(parentElement, 'Over threshold:');
         } else {
             showElement(parentElement);
         }
@@ -273,7 +220,7 @@
 
     function processExistingThumbnails() {
         const thumbnails = document.querySelectorAll('ytd-rich-item-renderer, ytd-compact-video-renderer');
-        log('Processing existing thumbnails:', thumbnails.length);
+        console.log('Processing existing thumbnails:', thumbnails.length);
         thumbnails.forEach(processThumbnail);
     }
 
@@ -281,9 +228,9 @@
         const storedChannels = GM_getValue('subscribedChannels');
         if (storedChannels) {
             subscribedChannels = new Set(JSON.parse(storedChannels));
-            log('Loaded stored subscribed channels:', Array.from(subscribedChannels));
+            console.log('Loaded stored subscribed channels:', Array.from(subscribedChannels));
         } else {
-            log('No stored subscribed channels found');
+            console.log('No stored subscribed channels found');
         }
     }
 
@@ -291,14 +238,14 @@
         loadStoredSubscribedChannels();
 
         if (window.location.pathname === '/feed/channels') {
-            log('On channels page, fetching subscribed channels');
+            console.log('On channels page, fetching subscribed channels');
             fetchSubscribedChannels();
         } else if (shouldRunOnCurrentPage()) {
-            log('Processing thumbnails');
+            console.log('Processing thumbnails');
             processExistingThumbnails();
             observeDOMChanges();
         } else {
-            log('Not on a target page, script inactive');
+            console.log('Not on a target page, script inactive');
         }
     }
 
@@ -310,16 +257,16 @@
 
     document.addEventListener('yt-navigate-finish', (event) => {
         if (event.detail && event.detail.url) {
-            log('Navigation detected:', event.detail.url);
+            console.log('Navigation detected:', event.detail.url);
             if (event.detail.url.includes('/feed/channels')) {
                 fetchSubscribedChannels();
             } else if (shouldRunOnCurrentPage()) {
                 processExistingThumbnails();
             } else {
-                log('Navigated to a non-target page, script inactive');
+                console.log('Navigated to a non-target page, script inactive');
             }
         }
     });
 
-    log('Script initialized');
+    console.log('Script initialized');
 })();
