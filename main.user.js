@@ -75,21 +75,20 @@
     function getChannelName(thumbnailElement) {
         if (window.location.href.includes("watch?v=")) {
             // On an individual video page
-            const channelNameElement = thumbnailElement.querySelector('ytd-channel-name #text-container yt-formatted-string#text');
+            const channelNameElement = thumbnailElement.querySelector('ytd-channel-name yt-formatted-string#text');
             return channelNameElement ? channelNameElement.textContent.trim() : null;
         } else if (window.location.href === "https://www.youtube.com/") {
-            // Find all anchor tags in the thumbnail element
-        const possibleChannelLinks = thumbnailElement.querySelectorAll('a[href^="/@"]');
-        for (const link of possibleChannelLinks) {
-            // Check if the link has text content that looks like a channel name
-            if (link.textContent && link.textContent.trim().length > 0) {
-                return link.textContent.trim();
+            // On the youtube home page
+            const possibleChannelLinks = thumbnailElement.querySelectorAll('a[href^="/@"]');
+            for (const link of possibleChannelLinks) {
+                if (link.textContent && link.textContent.trim().length > 0) {
+                    return link.textContent.trim();
+                }
             }
-        }
+
             return null;
         }
     }
-
 
     function isNormalVideo(element) {
         // HOME PAGE
