@@ -91,28 +91,22 @@
     }
 
     function isNormalVideo(element) {
-        // HOME PAGE
+        // Check if it's a rich item renderer
         const isRichItem = element.tagName === 'YTD-RICH-ITEM-RENDERER';
         // INDIVIDUAL VIDEO
         const isCompactVideo = element.tagName === 'YTD-COMPACT-VIDEO-RENDERER';
 
         if (!isRichItem && !isCompactVideo) return false;
 
-        let ariaLabel;
-        ariaLabel = element.querySelector('[aria-label]');
-
-        if (!ariaLabel) return false;
-
-        const label = (ariaLabel.getAttribute('aria-label') || ariaLabel.textContent).toLowerCase();
-
-        // Check if it's a normal video (has duration)
-        const isNormal = label.includes('minutes') || label.includes('seconds');
+        // Check for duration
+        const elementText = element.textContent;
+        const hasTimeFormat = /\d+:\d+/.test(elementText);
 
         // Check if the video has been watched
         const isWatched = element.querySelector('#progress');
 
-        // Return true only if it's a normal video and hasn't been watched
-        return isNormal && !isWatched;
+        // Return true only if it has a duration and hasn't been watched
+        return hasTimeFormat && !isWatched;
     }
 
 
