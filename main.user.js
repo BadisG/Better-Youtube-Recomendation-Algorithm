@@ -91,22 +91,27 @@
     }
 
     function isNormalVideo(element) {
-        // Check if it's a rich item renderer
+        // Check if it's a rich item renderer or compact video
         const isRichItem = element.tagName === 'YTD-RICH-ITEM-RENDERER';
-        // INDIVIDUAL VIDEO
         const isCompactVideo = element.tagName === 'YTD-COMPACT-VIDEO-RENDERER';
-
-        if (!isRichItem && !isCompactVideo) return false;
 
         // Check for duration
         const elementText = element.textContent;
         const hasTimeFormat = /\d+:\d+/.test(elementText);
 
+        if (!hasTimeFormat) {
+            return { isNormal: false, reason: 'No duration found' };
+        }
+
         // Check if the video has been watched
         const isWatched = element.querySelector('#progress');
 
-        // Return true only if it has a duration and hasn't been watched
-        return hasTimeFormat && !isWatched;
+        if (isWatched) {
+            return { isNormal: false, reason: 'Already watched' };
+        }
+
+        // If all checks pass, it's a normal video
+        return { isNormal: true, reason: 'Normal video' };
     }
 
 
