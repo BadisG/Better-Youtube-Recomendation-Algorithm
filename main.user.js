@@ -91,11 +91,17 @@
     }
 
     function isNormalVideo(element) {
-        // Check if it's a rich item renderer or compact video
+        // Check if it's a rich item renderer, compact video, or a playlist
         const isRichItem = element.tagName === 'YTD-RICH-ITEM-RENDERER';
         const isCompactVideo = element.tagName === 'YTD-COMPACT-VIDEO-RENDERER';
+        const isCompactPlaylist = element.tagName === 'YTD-COMPACT-PLAYLIST-RENDERER';
 
-        // Check for duration
+        // If it's a playlist, mark it as not normal (you can modify this condition)
+        if (isCompactPlaylist) {
+            return { isNormal: false, reason: 'Playlist element detected' };
+        }
+
+        // Check for video duration
         const elementText = element.textContent;
         const durationMatch = elementText.match(/\d+:\d+/); // Capture the duration
         if (!durationMatch) {
@@ -137,9 +143,19 @@
             return;
         }
 
-        const parentElement = thumbnailElement.closest('ytd-rich-item-renderer') || thumbnailElement.closest('ytd-compact-video-renderer');
+        // Look for video or playlist renderers
+        const parentElement = thumbnailElement.closest('ytd-rich-item-renderer') ||
+              thumbnailElement.closest('ytd-compact-video-renderer') ||
+              thumbnailElement.closest('ytd-compact-playlist-renderer');
+
         if (!parentElement) {
             console.log('No parent element found, skipping');
+            return;
+        }
+
+        const normalVideoCheck = isNormalVideo(parentElement);
+        if (!normalVideoCheck.isNormal) {
+            hideElement(parentElement, `Not a normal video: ${normalVideoCheck.reason}`);
             return;
         }
 
@@ -152,12 +168,6 @@
 
         const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         console.log('Video ID:', videoId, '| Channel:', normalizedChannelName);
-
-        const normalVideoCheck = isNormalVideo(parentElement);
-        if (!normalVideoCheck.isNormal) {
-            hideElement(parentElement, `Not a normal video: ${normalVideoCheck.reason}`);
-            return;
-        }
 
         // Subscribed channel check moved here, before the duration check
         if (subscribedChannels.has(normalizedChannelName)) {
