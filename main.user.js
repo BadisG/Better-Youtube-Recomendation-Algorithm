@@ -97,23 +97,22 @@
 
         // Check for duration
         const elementText = element.textContent;
-        const hasTimeFormat = /\d+:\d+/.test(elementText);
-
-        if (!hasTimeFormat) {
+        const durationMatch = elementText.match(/\d+:\d+/); // Capture the duration
+        if (!durationMatch) {
             return { isNormal: false, reason: 'No duration found' };
+        } else {
+            console.log('Duration found:', durationMatch[0]); // Print the duration
         }
 
         // Check if the video has been watched
-        const isWatched = element.querySelector('#progress');
-
-        if (isWatched) {
+        const hasProgressBar = element.querySelector('[class*="progress" i]');
+        if (hasProgressBar) {
             return { isNormal: false, reason: 'Already watched' };
         }
 
         // If all checks pass, it's a normal video
         return { isNormal: true, reason: 'Normal video' };
     }
-
 
     function hideElement(element, reason) {
         if (element) {
@@ -145,6 +144,12 @@
         }
         const videoId = getVideoId(parentElement);
         const channelName = getChannelName(parentElement);
+
+        const normalVideoCheck = isNormalVideo(parentElement);
+        if (!normalVideoCheck.isNormal) {
+            hideElement(parentElement, normalVideoCheck.reason);
+            return;
+        }
 
         if (!videoId || !channelName) {
             hideElement(parentElement, 'missing video ID or channel name');
