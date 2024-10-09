@@ -105,7 +105,7 @@
         }
 
         // Check if the video has been watched
-        const hasProgressBar = element.querySelector('[class*="progress" i]');
+        const hasProgressBar = element.querySelector('#progress, [class*="progress" i]');
         if (hasProgressBar) {
             return { isNormal: false, reason: 'Already watched' };
         }
