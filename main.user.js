@@ -136,43 +136,44 @@
             console.log('Not on a target page, skipping processing');
             return;
         }
-        const parentElement = thumbnailElement.closest('ytd-rich-item-renderer') || thumbnailElement.closest('ytd-compact-video-renderer');
 
+        const parentElement = thumbnailElement.closest('ytd-rich-item-renderer') || thumbnailElement.closest('ytd-compact-video-renderer');
         if (!parentElement) {
             console.log('No parent element found, skipping');
             return;
         }
+
         const videoId = getVideoId(parentElement);
         const channelName = getChannelName(parentElement);
-
         if (!videoId || !channelName) {
             hideElement(parentElement, 'missing video ID or channel name');
             return;
         }
 
         const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
         console.log('Video ID:', videoId, '| Channel:', normalizedChannelName);
 
+        // Subscribed channel check moved here, before the duration check
         if (subscribedChannels.has(normalizedChannelName)) {
             hideElement(parentElement, 'subscribed');
             return;
         }
 
-        if (!isNormalVideo(parentElement)) {
-            hideElement(parentElement, 'Not a normal video:');
-            return;
-        }
-
         let viewCount = GM_getValue(videoId, 0) + 1;
         GM_setValue(videoId, viewCount);
-
         console.log('View count:', viewCount);
 
         if (viewCount > Threshold) {
             hideElement(parentElement, 'Over threshold:');
+            return;
         } else {
             showElement(parentElement);
+        }
+
+        const normalVideoCheck = isNormalVideo(parentElement);
+        if (!normalVideoCheck.isNormal) {
+            hideElement(parentElement, `Not a normal video: ${normalVideoCheck.reason}`);
+            return;
         }
     }
 
