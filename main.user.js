@@ -145,12 +145,6 @@
         const videoId = getVideoId(parentElement);
         const channelName = getChannelName(parentElement);
 
-        const normalVideoCheck = isNormalVideo(parentElement);
-        if (!normalVideoCheck.isNormal) {
-            hideElement(parentElement, normalVideoCheck.reason);
-            return;
-        }
-
         if (!videoId || !channelName) {
             hideElement(parentElement, 'missing video ID or channel name');
             return;
