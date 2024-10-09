@@ -153,6 +153,12 @@
         const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         console.log('Video ID:', videoId, '| Channel:', normalizedChannelName);
 
+        const normalVideoCheck = isNormalVideo(parentElement);
+        if (!normalVideoCheck.isNormal) {
+            hideElement(parentElement, `Not a normal video: ${normalVideoCheck.reason}`);
+            return;
+        }
+
         // Subscribed channel check moved here, before the duration check
         if (subscribedChannels.has(normalizedChannelName)) {
             hideElement(parentElement, 'subscribed');
@@ -168,12 +174,6 @@
             return;
         } else {
             showElement(parentElement);
-        }
-
-        const normalVideoCheck = isNormalVideo(parentElement);
-        if (!normalVideoCheck.isNormal) {
-            hideElement(parentElement, `Not a normal video: ${normalVideoCheck.reason}`);
-            return;
         }
     }
 
