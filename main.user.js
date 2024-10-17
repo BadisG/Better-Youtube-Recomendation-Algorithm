@@ -193,15 +193,15 @@
                 if (mutation.type === 'childList') {
                     mutation.addedNodes.forEach((node) => {
                         if (node.nodeType === Node.ELEMENT_NODE) {
-                            if (node.matches('ytd-rich-item-renderer, ytd-compact-video-renderer')) {
+                            if (node.matches('ytd-rich-item-renderer, ytd-compact-video-renderer', 'ytd-compact-playlist-renderer')) {
                                 processThumbnail(node);
                             } else {
-                                node.querySelectorAll('ytd-rich-item-renderer, ytd-compact-video-renderer').forEach(processThumbnail);
+                                node.querySelectorAll('ytd-rich-item-renderer, ytd-compact-video-renderer','ytd-compact-playlist-renderer').forEach(processThumbnail);
                             }
                         }
                     });
                 } else if (mutation.type === 'attributes' && mutation.target.id === 'progress') {
-                    const thumbnailElement = mutation.target.closest('ytd-rich-item-renderer') || mutation.target.closest('ytd-compact-video-renderer');
+                    const thumbnailElement = mutation.target.closest('ytd-rich-item-renderer') || mutation.target.closest('ytd-compact-video-renderer')|| mutation.target.closest('ytd-compact-playlist-renderer');
                     if (thumbnailElement) {
                         processThumbnail(thumbnailElement);
                     }
@@ -219,7 +219,7 @@
     }
 
     function processExistingThumbnails() {
-        const thumbnails = document.querySelectorAll('ytd-rich-item-renderer, ytd-compact-video-renderer');
+        const thumbnails = document.querySelectorAll('ytd-rich-item-renderer, ytd-compact-video-renderer', 'ytd-compact-playlist-renderer');
         console.log('Processing existing thumbnails:', thumbnails.length);
         thumbnails.forEach(processThumbnail);
     }
