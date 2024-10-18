@@ -1,7 +1,8 @@
+
 // ==UserScript==
 // @name         Better Youtube Recommendation Algorithm
 // @namespace    http://tampermonkey.net/
-// @version      6.0
+// @version      5.0
 // @description  Count and hide YouTube thumbnails after 10 views, excluding subscribed channels, and hide playlist, live, and watched thumbnails.
 // @match        https://www.youtube.com/
 // @match        https://www.youtube.com/watch?*
@@ -100,6 +101,10 @@
         const isCompactVideo = element.tagName === 'YTD-COMPACT-VIDEO-RENDERER';
         const isCompactPlaylist = element.tagName === 'YTD-COMPACT-PLAYLIST-RENDERER';
         const isItemSectionPlaylist = element.tagName === 'YTD-ITEM-SECTION-RENDERER';
+
+        if (element.textContent.includes('LIVE') && element.textContent.includes('watching')) {
+            return { isNormal: false, reason: 'Live video' };
+        }
 
         // If it's any type of playlist, mark it as not normal
         if (isCompactPlaylist || isItemSectionPlaylist) {
