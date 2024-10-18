@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Better Youtube Recommendation Algorithm
 // @namespace    http://tampermonkey.net/
-// @version      5.0
+// @version      6.0
 // @description  Count and hide YouTube thumbnails after 10 views, excluding subscribed channels, and hide playlist, live, and watched thumbnails.
 // @match        https://www.youtube.com/
 // @match        https://www.youtube.com/watch?*
