@@ -91,23 +91,30 @@
     }
 
     function isNormalVideo(element) {
-        // Check if it's a rich item renderer, compact video, or a playlist
+        // Check current URL
+        const isHomePage = window.location.href === 'https://www.youtube.com/' ||
+              window.location.href === 'https://www.youtube.com';
+
+        // Check if it's a rich item renderer, compact video, or any type of playlist
         const isRichItem = element.tagName === 'YTD-RICH-ITEM-RENDERER';
         const isCompactVideo = element.tagName === 'YTD-COMPACT-VIDEO-RENDERER';
         const isCompactPlaylist = element.tagName === 'YTD-COMPACT-PLAYLIST-RENDERER';
+        const isItemSectionPlaylist = element.tagName === 'YTD-ITEM-SECTION-RENDERER';
 
-        // If it's a playlist, mark it as not normal (you can modify this condition)
-        if (isCompactPlaylist) {
+        // If it's any type of playlist, mark it as not normal
+        if (isCompactPlaylist || isItemSectionPlaylist) {
             return { isNormal: false, reason: 'Playlist element detected' };
         }
 
-        // Check for video duration
-        const elementText = element.textContent;
-        const durationMatch = elementText.match(/\d+:\d+/); // Capture the duration
-        if (!durationMatch) {
-            return { isNormal: false, reason: 'No duration found' };
-        } else {
-            console.log('Duration found:', durationMatch[0]); // Print the duration
+        // Only perform duration check on homepage
+        if (isHomePage) {
+            const elementText = element.textContent;
+            const durationMatch = elementText.match(/\d+:\d+/); // Capture the duration
+            if (!durationMatch) {
+                return { isNormal: false, reason: 'No duration found' };
+            } else {
+                console.log('Duration found:', durationMatch[0]); // Print the duration
+            }
         }
 
         // Check if the video has been watched
@@ -146,7 +153,8 @@
         // Look for video or playlist renderers
         const parentElement = thumbnailElement.closest('ytd-rich-item-renderer') ||
               thumbnailElement.closest('ytd-compact-video-renderer') ||
-              thumbnailElement.closest('ytd-compact-playlist-renderer');
+              thumbnailElement.closest('ytd-compact-playlist-renderer')||
+              thumbnailElement.closest('ytd-item-section-renderer');
 
         if (!parentElement) {
             console.log('No parent element found, skipping');
@@ -193,15 +201,18 @@
                 if (mutation.type === 'childList') {
                     mutation.addedNodes.forEach((node) => {
                         if (node.nodeType === Node.ELEMENT_NODE) {
-                            if (node.matches('ytd-rich-item-renderer, ytd-compact-video-renderer', 'ytd-compact-playlist-renderer')) {
+                            if (node.matches('ytd-rich-item-renderer, ytd-compact-video-renderer', 'ytd-compact-playlist-renderer', 'ytd-item-section-renderer')) {
                                 processThumbnail(node);
                             } else {
-                                node.querySelectorAll('ytd-rich-item-renderer, ytd-compact-video-renderer','ytd-compact-playlist-renderer').forEach(processThumbnail);
+                                node.querySelectorAll('ytd-rich-item-renderer, ytd-compact-video-renderer','ytd-compact-playlist-renderer', 'ytd-item-section-renderer').forEach(processThumbnail);
                             }
                         }
                     });
                 } else if (mutation.type === 'attributes' && mutation.target.id === 'progress') {
-                    const thumbnailElement = mutation.target.closest('ytd-rich-item-renderer') || mutation.target.closest('ytd-compact-video-renderer')|| mutation.target.closest('ytd-compact-playlist-renderer');
+                    const thumbnailElement = mutation.target.closest('ytd-rich-item-renderer') ||
+                          mutation.target.closest('ytd-compact-video-renderer')||
+                          mutation.target.closest('ytd-compact-playlist-renderer')||
+                          mutation.target.closest('ytd-item-section-renderer');
                     if (thumbnailElement) {
                         processThumbnail(thumbnailElement);
                     }
@@ -219,7 +230,7 @@
     }
 
     function processExistingThumbnails() {
-        const thumbnails = document.querySelectorAll('ytd-rich-item-renderer, ytd-compact-video-renderer', 'ytd-compact-playlist-renderer');
+        const thumbnails = document.querySelectorAll('ytd-rich-item-renderer, ytd-compact-video-renderer', 'ytd-compact-playlist-renderer', 'ytd-item-section-renderer');
         console.log('Processing existing thumbnails:', thumbnails.length);
         thumbnails.forEach(processThumbnail);
     }
