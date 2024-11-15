@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Better Youtube Recommendation Algorithm
 // @namespace    http://tampermonkey.net/
-// @version      6.0
+// @version      6.5
 // @description  Count and hide YouTube thumbnails after 10 views, excluding subscribed channels, and hide playlist, live, and watched thumbnails.
 // @match        https://www.youtube.com/
 // @match        https://www.youtube.com/watch?*
@@ -154,10 +154,10 @@
             return;
         }
 
-        // Look for video or playlist renderers
+        // Look for the parent element to ensure we are processing a valid video/playlist thumbnail
         const parentElement = thumbnailElement.closest('ytd-rich-item-renderer') ||
               thumbnailElement.closest('ytd-compact-video-renderer') ||
-              thumbnailElement.closest('ytd-compact-playlist-renderer')||
+              thumbnailElement.closest('ytd-compact-playlist-renderer') ||
               thumbnailElement.closest('ytd-item-section-renderer');
 
         if (!parentElement) {
@@ -165,39 +165,81 @@
             return;
         }
 
+        // Check if the element represents a normal video
         const normalVideoCheck = isNormalVideo(parentElement);
         if (!normalVideoCheck.isNormal) {
             hideElement(parentElement, `Not a normal video: ${normalVideoCheck.reason}`);
             return;
         }
 
+        // Retrieve metadata elements (date and views share the same class)
+        const metadataElements = parentElement.querySelectorAll('.inline-metadata-item.style-scope.ytd-video-meta-block');
+        let metadataDate = null;
+        let isStreamed = false;
+
+        // Loop through metadata elements to find one matching a date or streamed format
+        metadataElements.forEach((element) => {
+            const text = element.textContent.trim();
+            if (text.match(/^(Streamed\s+)?\d+\s+(second|minute|hour|day|week|month|year)s?\s+ago$/)) {
+                metadataDate = text;
+                isStreamed = text.startsWith('Streamed');
+            }
+        });
+
+        // Skip if no valid date metadata is found
+        if (!metadataDate) {
+            console.log('No valid date metadata found, skipping');
+            return;
+        }
+
+        // Parse the publication date from the metadata
+        const videoDate = parseDateFromMetadata(metadataDate);
+        const startDate = new Date('2004-02-15'); // Set your desired start date
+        const endDate = new Date(); // Set endDate to today's date
+
+        // Check if the video falls within the specified date range
+        if (!videoDate || !isWithinDateRange(videoDate, startDate, endDate)) {
+            hideElement(parentElement, `Outside date range: ${metadataDate}`);
+            return;
+        }
+
+        // Optionally, skip streamed videos (if desired)
+        if (isStreamed) {
+            hideElement(parentElement, `Streamed video: ${metadataDate}`);
+            return;
+        }
+
+        // Get video ID and channel name
         const videoId = getVideoId(parentElement);
         const channelName = getChannelName(parentElement);
         if (!videoId || !channelName) {
-            hideElement(parentElement, 'missing video ID or channel name');
+            hideElement(parentElement, 'Missing video ID or channel name');
             return;
         }
 
         const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         console.log('Video ID:', videoId, '| Channel:', normalizedChannelName);
 
-        // Subscribed channel check moved here, before the duration check
+        // Hide the video if it belongs to a subscribed channel
         if (subscribedChannels.has(normalizedChannelName)) {
-            hideElement(parentElement, 'subscribed');
+            hideElement(parentElement, 'Subscribed');
             return;
         }
 
+        // Handle view count threshold
         let viewCount = GM_getValue(videoId, 0) + 1;
         GM_setValue(videoId, viewCount);
         console.log('View count:', viewCount);
 
         if (viewCount > Threshold) {
-            hideElement(parentElement, 'Over threshold:');
+            hideElement(parentElement, 'Over threshold');
             return;
         } else {
             showElement(parentElement);
         }
     }
+
+
 
     function observeDOMChanges() {
         const observer = new MutationObserver((mutations) => {
@@ -247,6 +289,33 @@
         } else {
             console.log('No stored subscribed channels found');
         }
+    }
+
+    function parseDateFromMetadata(metadataText) {
+        const now = new Date();
+        const match = metadataText.match(/^(Streamed\s+)?(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago$/);
+
+        if (match) {
+            const value = parseInt(match[2], 10); // The numeric value
+            const unit = match[3]; // The time unit
+
+            switch (unit) {
+                case 'second': return new Date(now - value * 1000);
+                case 'minute': return new Date(now - value * 60000);
+                case 'hour': return new Date(now - value * 3600000);
+                case 'day': return new Date(now - value * 86400000);
+                case 'week': return new Date(now - value * 7 * 86400000);
+                case 'month': return new Date(now.setMonth(now.getMonth() - value));
+                case 'year': return new Date(now.setFullYear(now.getFullYear() - value));
+            }
+        }
+
+        console.error('Unrecognized date format (not a date):', metadataText);
+        return null;
+    }
+
+    function isWithinDateRange(videoDate, startDate, endDate) {
+        return videoDate >= startDate && videoDate <= endDate;
     }
 
     function init() {
