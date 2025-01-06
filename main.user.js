@@ -341,10 +341,6 @@
     }
 
     document.addEventListener('yt-navigate-finish', (event) => {
-        console.log('Navigation event detected:', event);
-        console.log('Current URL:', window.location.href);
-        console.log('Current pathname:', window.location.pathname);
-
         const currentUrl = event.detail?.url || window.location.href;
         console.log('Using URL:', currentUrl);
 
@@ -361,6 +357,5 @@
             console.log('Navigated to a non-target page, script inactive');
         }
     });
-
     console.log('Script initialized');
 })();
