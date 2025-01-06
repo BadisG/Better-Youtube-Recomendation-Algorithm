@@ -1,11 +1,9 @@
 // ==UserScript==
 // @name         Better Youtube Recommendation Algorithm
 // @namespace    http://tampermonkey.net/
-// @version      6.5
+// @version      6.6
 // @description  Count and hide YouTube thumbnails after 10 views, excluding subscribed channels, and hide playlist, live, and watched thumbnails.
-// @match        https://www.youtube.com/
-// @match        https://www.youtube.com/watch?*
-// @match        https://www.youtube.com/feed/channels
+// @match        https://www.youtube.com/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // ==/UserScript==
@@ -20,7 +18,9 @@
     function shouldRunOnCurrentPage() {
         const url = window.location.href;
         return url === 'https://www.youtube.com/' ||
-            url.startsWith('https://www.youtube.com/watch?') ||
+            url === 'https://www.youtube.com' ||
+            url.includes('/watch?') ||
+            url.includes('/results?') ||
             url === 'https://www.youtube.com/feed/channels';
     }
 
