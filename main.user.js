@@ -1,9 +1,12 @@
 // ==UserScript==
 // @name         Better Youtube Recommendation Algorithm
 // @namespace    http://tampermonkey.net/
-// @version      6.6
+// @version      6.7
 // @description  Count and hide YouTube thumbnails after 10 views, excluding subscribed channels, and hide playlist, live, and watched thumbnails.
-// @match        https://www.youtube.com/*
+// @match        https://www.youtube.com/
+// @match        https://www.youtube.com/watch?*
+// @match        https://www.youtube.com/feed/channels
+// @match        https://www.youtube.com/results*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // ==/UserScript==
@@ -16,12 +19,10 @@
     let subscribedChannels = new Set();
 
     function shouldRunOnCurrentPage() {
-        const url = window.location.href;
-        return url === 'https://www.youtube.com/' ||
-            url === 'https://www.youtube.com' ||
-            url.includes('/watch?') ||
-            url.includes('/results?') ||
-            url === 'https://www.youtube.com/feed/channels';
+        const pathname = window.location.pathname;
+        return pathname === '/' ||
+            pathname === '/watch' ||
+            pathname === '/feed/channels';
     }
 
     function fetchSubscribedChannels() {
@@ -340,15 +341,24 @@
     }
 
     document.addEventListener('yt-navigate-finish', (event) => {
-        if (event.detail && event.detail.url) {
-            console.log('Navigation detected:', event.detail.url);
-            if (event.detail.url.includes('/feed/channels')) {
-                fetchSubscribedChannels();
-            } else if (shouldRunOnCurrentPage()) {
+        console.log('Navigation event detected:', event);
+        console.log('Current URL:', window.location.href);
+        console.log('Current pathname:', window.location.pathname);
+
+        const currentUrl = event.detail?.url || window.location.href;
+        console.log('Using URL:', currentUrl);
+
+        if (currentUrl.includes('/feed/channels')) {
+            fetchSubscribedChannels();
+        } else if (shouldRunOnCurrentPage()) {
+            // Add a delay to wait for YouTube to load recommendations
+            setTimeout(() => {
                 processExistingThumbnails();
-            } else {
-                console.log('Navigated to a non-target page, script inactive');
-            }
+                // Re-initialize the observer to catch any new thumbnails
+                observeDOMChanges();
+            }, 1500); // 1.5 second delay
+        } else {
+            console.log('Navigated to a non-target page, script inactive');
         }
     });
 
