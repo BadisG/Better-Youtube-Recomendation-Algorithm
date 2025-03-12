@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Better Youtube Recommendation Algorithm
 // @namespace    http://tampermonkey.net/
-// @version      6.7
+// @version      7.0
 // @description  Count and hide YouTube thumbnails after 10 views, excluding subscribed channels, and hide playlist, live, and watched thumbnails.
 // @match        https://www.youtube.com/
 // @match        https://www.youtube.com/watch?*
@@ -17,6 +17,7 @@
     const DEBUG = true;
     let Threshold = 10;
     let subscribedChannels = new Set();
+    const FILTERED_TITLE_TERMS = ['fzefzfsdcs', 'gsgdfsgertert']; // You can add real words to filter titles that have those here
 
     function shouldRunOnCurrentPage() {
         const pathname = window.location.pathname;
@@ -171,6 +172,18 @@
         if (!normalVideoCheck.isNormal) {
             hideElement(parentElement, `Not a normal video: ${normalVideoCheck.reason}`);
             return;
+        }
+
+        // Check for filtered title terms
+        const videoTitleElement = parentElement.querySelector('#video-title, yt-formatted-string#video-title');
+        if (videoTitleElement) {
+            const videoTitle = videoTitleElement.textContent.trim();
+            for (const term of FILTERED_TITLE_TERMS) {
+                if (videoTitle.toLowerCase().includes(term.toLowerCase())) {
+                    hideElement(parentElement, `Filtered title term: ${term}`);
+                    return;
+                }
+            }
         }
 
         // Retrieve metadata elements (date and views share the same class)
@@ -357,5 +370,6 @@
             console.log('Navigated to a non-target page, script inactive');
         }
     });
+
     console.log('Script initialized');
 })();
