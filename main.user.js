@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Better Youtube Recommendation Algorithm
 // @namespace    http://tampermonkey.net/
-// @version      7.0
+// @version      7.1
 // @description  Count and hide YouTube thumbnails after 10 views, excluding subscribed channels, and hide playlist, live, and watched thumbnails.
 // @match        https://www.youtube.com/
 // @match        https://www.youtube.com/watch?*
@@ -17,7 +17,8 @@
     const DEBUG = true;
     let Threshold = 10;
     let subscribedChannels = new Set();
-    const FILTERED_TITLE_TERMS = ['fzefzfsdcs', 'gsgdfsgertert']; // You can add real words to filter titles that have those here
+    const FILTERED_TITLE_TERMS = ['fsfzzerz', 'sdfzertzerzer']; // Add words to filter titles that have those
+    const FILTERED_CHANNEL_TERMS = ['qfrtzeerezt', 'truytuhfhgr']; // Add words to filter channel names that have those
 
     function shouldRunOnCurrentPage() {
         const pathname = window.location.pathname;
@@ -231,6 +232,15 @@
             return;
         }
 
+        // NEW CODE: Check for filtered channel name terms
+        const FILTERED_CHANNEL_TERMS = ['NBA', 'Sports', 'ESPN', 'Basketball'];
+        for (const term of FILTERED_CHANNEL_TERMS) {
+            if (channelName.includes(term)) {
+                hideElement(parentElement, `Filtered channel term: ${term}`);
+                return;
+            }
+        }
+
         const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         console.log('Video ID:', videoId, '| Channel:', normalizedChannelName);
 
@@ -252,8 +262,6 @@
             showElement(parentElement);
         }
     }
-
-
 
     function observeDOMChanges() {
         const observer = new MutationObserver((mutations) => {
