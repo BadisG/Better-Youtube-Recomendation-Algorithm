@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Better Youtube Recommendation Algorithm
 // @namespace    http://tampermonkey.net/
-// @version      7.1
+// @version      7.2
 // @description  Count and hide YouTube thumbnails after 10 views, excluding subscribed channels, and hide playlist, live, and watched thumbnails.
 // @match        https://www.youtube.com/
 // @match        https://www.youtube.com/watch?*
@@ -232,9 +232,9 @@
             return;
         }
 
-        // Check for filtered channel name terms
+        // NEW CODE: Check for filtered channel name terms
         for (const term of FILTERED_CHANNEL_TERMS) {
-            if (channelName.includes(term)) {
+            if (channelName.toLowerCase().includes(term.toLowerCase())) {
                 hideElement(parentElement, `Filtered channel term: ${term}`);
                 return;
             }
