@@ -232,8 +232,7 @@
             return;
         }
 
-        // NEW CODE: Check for filtered channel name terms
-        const FILTERED_CHANNEL_TERMS = ['NBA', 'Sports', 'ESPN', 'Basketball'];
+        // Check for filtered channel name terms
         for (const term of FILTERED_CHANNEL_TERMS) {
             if (channelName.includes(term)) {
                 hideElement(parentElement, `Filtered channel term: ${term}`);
