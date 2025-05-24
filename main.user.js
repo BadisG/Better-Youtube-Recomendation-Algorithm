@@ -180,7 +180,9 @@
         if (videoTitleElement) {
             const videoTitle = videoTitleElement.textContent.trim();
             for (const term of FILTERED_TITLE_TERMS) {
-                if (videoTitle.toLowerCase().includes(term.toLowerCase())) {
+                const regex = new RegExp(`\\b${term}\\b`, 'i');
+                if (regex.test(videoTitle)) {
+                    console.log(`Found "${term}" in title: "${videoTitle}", HIDING`);
                     hideElement(parentElement, `Filtered title term: ${term}`);
                     return;
                 }
@@ -234,7 +236,9 @@
 
         // NEW CODE: Check for filtered channel name terms
         for (const term of FILTERED_CHANNEL_TERMS) {
-            if (channelName.toLowerCase().includes(term.toLowerCase())) {
+            const regex = new RegExp(`\\b${term}\\b`, 'i');
+            if (regex.test(channelName)) {
+                console.log(`Found "${term}" in channel name: "${channelName}", HIDING`);
                 hideElement(parentElement, `Filtered channel term: ${term}`);
                 return;
             }
