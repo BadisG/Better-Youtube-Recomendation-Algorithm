@@ -181,7 +181,7 @@
         if (videoTitleElement) {
             const videoTitle = videoTitleElement.textContent.trim();
             for (const term of FILTERED_TITLE_TERMS) {
-                const regex = new RegExp(`\\b${term}(?:'s)?\\b`, 'i');
+                const regex = new RegExp(`\\b${term}(?:'s|s)?\\b`, 'i');
                 if (regex.test(videoTitle)) {
                     console.log(`Found "${term}" in title: "${videoTitle}", HIDING`);
                     hideElement(parentElement, `Filtered title term: ${term}`);
