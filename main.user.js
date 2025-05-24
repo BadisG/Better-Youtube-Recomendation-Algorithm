@@ -16,6 +16,7 @@
 
     const DEBUG = true;
     let Threshold = 10;
+    const MINIMUM_VIEWS = 0; // Add a minimum views threshold here
     let subscribedChannels = new Set();
     const FILTERED_TITLE_TERMS = ['fsfzzerz', 'sdfzertzerzer']; // Add words to filter titles that have those
     const FILTERED_CHANNEL_TERMS = ['qfrtzeerezt', 'truytuhfhgr']; // Add words to filter channel names that have those
@@ -180,7 +181,7 @@
         if (videoTitleElement) {
             const videoTitle = videoTitleElement.textContent.trim();
             for (const term of FILTERED_TITLE_TERMS) {
-                const regex = new RegExp(`\\b${term}\\b`, 'i');
+                const regex = new RegExp(`\\b${term}(?:'s)?\\b`, 'i');
                 if (regex.test(videoTitle)) {
                     console.log(`Found "${term}" in title: "${videoTitle}", HIDING`);
                     hideElement(parentElement, `Filtered title term: ${term}`);
@@ -236,7 +237,7 @@
 
         // NEW CODE: Check for filtered channel name terms
         for (const term of FILTERED_CHANNEL_TERMS) {
-            const regex = new RegExp(`\\b${term}\\b`, 'i');
+            const regex = new RegExp(`\\b${term}(?:'s)?\\b`, 'i');
             if (regex.test(channelName)) {
                 console.log(`Found "${term}" in channel name: "${channelName}", HIDING`);
                 hideElement(parentElement, `Filtered channel term: ${term}`);
@@ -246,6 +247,26 @@
 
         const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         console.log('Video ID:', videoId, '| Channel:', normalizedChannelName);
+
+        // Extract and evaluate view count
+        let viewCountText = null;
+        metadataElements.forEach((element) => {
+            const text = element.textContent.trim();
+            if (text.toLowerCase().includes('views')) {
+                viewCountText = text;
+            }
+        });
+
+        if (!viewCountText) {
+            console.log('No view count metadata found, skipping');
+            return;
+        }
+
+        const numericViews = parseViewCount(viewCountText);
+        if (numericViews < MINIMUM_VIEWS) {
+            hideElement(parentElement, `Below minimum views: ${viewCountText}`);
+            return;
+        }
 
         // Hide the video if it belongs to a subscribed channel
         if (subscribedChannels.has(normalizedChannelName)) {
@@ -341,6 +362,23 @@
 
     function isWithinDateRange(videoDate, startDate, endDate) {
         return videoDate >= startDate && videoDate <= endDate;
+    }
+
+    function parseViewCount(viewText) {
+        const match = viewText.toLowerCase().match(/([\d,.]+)\s*([kmb])/);
+        if (!match) return 0;
+
+        const num = parseFloat(match[1].replace(/,/g, ''));
+        const unit = match[2];
+
+        let multiplier = 1;
+        switch (unit) {
+            case 'k': multiplier = 1_000; break;
+            case 'm': multiplier = 1_000_000; break;
+            case 'b': multiplier = 1_000_000_000; break;
+        }
+
+        return isNaN(num) ? 0 : num * multiplier;
     }
 
     function init() {
