@@ -14,14 +14,21 @@
 (function() {
     'use strict';
 
-    const DEBUG = true;
+    const DEBUG = false; // Set to true to enable debug logging, false to disable
     let Threshold = 10;
     const MINIMUM_VIEWS = 0; // Add a minimum views threshold here
     let subscribedChannels = new Set();
     const FILTERED_TITLE_TERMS = ['fsfzzerz', 'sdfzertzerzer']; // Add words to filter titles that have those
     const FILTERED_CHANNEL_TERMS = ['qfrtzeerezt', 'truytuhfhgr']; // Add words to filter channel names that have those
 
-    function shouldRunOnCurrentPage() {
+    // Debug logging function
+    function debugLog(...args) {
+        if (DEBUG) {
+            console.log(...args);
+        }
+    }
+
+   function shouldRunOnCurrentPage() {
         const pathname = window.location.pathname;
         return pathname === '/' ||
             pathname === '/watch' ||
@@ -43,7 +50,7 @@
             GM_setValue('subscribedChannels', JSON.stringify(newSubscribedChannels));
             subscribedChannels = new Set(newSubscribedChannels);
 
-            console.log('Fetched subscribed channels:', Array.from(subscribedChannels));
+            debugLog('Fetched subscribed channels:', Array.from(subscribedChannels));
         }
 
         function waitForChannels() {
@@ -98,50 +105,73 @@
         // Check current URL
         const isHomePage = window.location.href === 'https://www.youtube.com/' ||
               window.location.href === 'https://www.youtube.com';
+        const isWatchPage = window.location.href.includes('/watch?v=');
 
-        // Check if it's a rich item renderer, compact video, or any type of playlist
-        const isRichItem = element.tagName === 'YTD-RICH-ITEM-RENDERER';
-        const isCompactVideo = element.tagName === 'YTD-COMPACT-VIDEO-RENDERER';
-        const isCompactPlaylist = element.tagName === 'YTD-COMPACT-PLAYLIST-RENDERER';
-        const isItemSectionPlaylist = element.tagName === 'YTD-ITEM-SECTION-RENDERER';
+        // Different handling for different page types
+        if (isWatchPage) {
+            // On watch pages, compact video renderers are the normal recommended videos
+            const isCompactVideo = element.tagName === 'YTD-COMPACT-VIDEO-RENDERER';
+            const isCompactPlaylist = element.tagName === 'YTD-COMPACT-PLAYLIST-RENDERER';
 
-        if (element.textContent.includes('LIVE') && element.textContent.includes('watching')) {
-            return { isNormal: false, reason: 'Live video' };
-        }
+            // Hide playlists but allow compact videos
+            if (isCompactPlaylist) {
+                return { isNormal: false, reason: 'Playlist element detected' };
+            }
 
-        // If it's any type of playlist, mark it as not normal
-        if (isCompactPlaylist || isItemSectionPlaylist) {
-            return { isNormal: false, reason: 'Playlist element detected' };
-        }
+            // Check for live videos
+            if (element.textContent.includes('LIVE') && element.textContent.includes('watching')) {
+                return { isNormal: false, reason: 'Live video' };
+            }
 
-        // Only perform duration check on homepage
-        if (isHomePage) {
+            // Check for watched videos (progress bar)
+            const hasProgressBar = element.querySelector('#progress, [class*="progress" i]');
+            if (hasProgressBar) {
+                return { isNormal: false, reason: 'Already watched' };
+            }
+
+            // For watch pages, don't check duration - compact videos don't always show duration the same way
+            return { isNormal: true, reason: 'Normal video (watch page)' };
+
+        } else if (isHomePage) {
+            // Original homepage logic
+            const isRichItem = element.tagName === 'YTD-RICH-ITEM-RENDERER';
+            const isCompactVideo = element.tagName === 'YTD-COMPACT-VIDEO-RENDERER';
+            const isCompactPlaylist = element.tagName === 'YTD-COMPACT-PLAYLIST-RENDERER';
+            const isItemSectionPlaylist = element.tagName === 'YTD-ITEM-SECTION-RENDERER';
+
+            if (element.textContent.includes('LIVE') && element.textContent.includes('watching')) {
+                return { isNormal: false, reason: 'Live video' };
+            }
+
+            if (isCompactPlaylist || isItemSectionPlaylist) {
+                return { isNormal: false, reason: 'Playlist element detected' };
+            }
+
+            // Duration check only for homepage
             const elementText = element.textContent;
-            const durationMatch = elementText.match(/\d+:\d+/); // Capture the duration
+            const durationMatch = elementText.match(/\d+:\d+/);
             if (!durationMatch) {
                 return { isNormal: false, reason: 'No duration found' };
-            } else {
-                console.log('Duration found:', durationMatch[0]); // Print the duration
             }
+
+            const hasProgressBar = element.querySelector('#progress, [class*="progress" i]');
+            if (hasProgressBar) {
+                return { isNormal: false, reason: 'Already watched' };
+            }
+
+            return { isNormal: true, reason: 'Normal video (homepage)' };
         }
 
-        // Check if the video has been watched (by checking for the presence of a progress bar)
-        const hasProgressBar = element.querySelector('#progress, [class*="progress" i]');
-        if (hasProgressBar) {
-            return { isNormal: false, reason: 'Already watched' };
-        }
-
-        // If all checks pass, it's a normal video
-        return { isNormal: true, reason: 'Normal video' };
-    }
+    // For other pages, default to normal
+    return { isNormal: true, reason: 'Default normal' };
+}
 
     function hideElement(element, reason) {
         if (element) {
             element.style.display = 'none';
             element.setAttribute('data-hide-reason', reason);
         }
-        console.log(reason[0].toUpperCase() + reason.slice(1) + ' \x1b[31m%s\x1b[0m', 'HIDING');
-
+        debugLog(reason[0].toUpperCase() + reason.slice(1) + ' \x1b[31m%s\x1b[0m', 'HIDING');
     }
 
     function showElement(element) {
@@ -149,12 +179,33 @@
             element.style.display = '';
             element.removeAttribute('data-hide-reason');
         }
-        console.log('Below threshold: \x1b[32m%s\x1b[0m', 'SHOWING');
+        debugLog('Below threshold: \x1b[32m%s\x1b[0m', 'SHOWING');
+    }
+
+    function shouldProcessElement(element) {
+        const isHomePage = window.location.pathname === '/';
+        const isWatchPage = window.location.pathname === '/watch';
+
+        if (isHomePage) {
+            // On homepage, process rich items and some compact videos
+            return element.tagName === 'YTD-RICH-ITEM-RENDERER' ||
+                element.tagName === 'YTD-COMPACT-VIDEO-RENDERER';
+        } else if (isWatchPage) {
+            // On watch pages, only process compact video renderers (sidebar recommendations)
+            return element.tagName === 'YTD-COMPACT-VIDEO-RENDERER';
+        }
+
+        return false;
     }
 
     function processThumbnail(thumbnailElement) {
         if (!shouldRunOnCurrentPage()) {
-            console.log('Not on a target page, skipping processing');
+            debugLog('Not on a target page, skipping processing');
+            return;
+        }
+
+        if (!shouldProcessElement(thumbnailElement)) {
+            debugLog('Element type not suitable for current page, skipping');
             return;
         }
 
@@ -165,25 +216,33 @@
               thumbnailElement.closest('ytd-item-section-renderer');
 
         if (!parentElement) {
-            console.log('No parent element found, skipping');
+            debugLog('No parent element found, skipping');
             return;
         }
 
         // Check if the element represents a normal video
         const normalVideoCheck = isNormalVideo(parentElement);
         if (!normalVideoCheck.isNormal) {
+            debugLog(`❌ HIDING - Not a normal video: ${normalVideoCheck.reason}`);
             hideElement(parentElement, `Not a normal video: ${normalVideoCheck.reason}`);
             return;
         }
 
-        // Check for filtered title terms
+        // Get video title first
         const videoTitleElement = parentElement.querySelector('#video-title, yt-formatted-string#video-title');
+        let videoTitle = 'Unknown Title';
         if (videoTitleElement) {
-            const videoTitle = videoTitleElement.textContent.trim();
+            videoTitle = videoTitleElement.textContent.trim();
+        }
+
+        debugLog(`\n📹 Processing: "${videoTitle}"`);
+
+        // Check for filtered title terms
+        if (videoTitleElement) {
             for (const term of FILTERED_TITLE_TERMS) {
                 const regex = new RegExp(`\\b${term}(?:'s|s)?\\b`, 'i');
                 if (regex.test(videoTitle)) {
-                    console.log(`Found "${term}" in title: "${videoTitle}", HIDING`);
+                    debugLog(`❌ HIDING - Found "${term}" in title: "${videoTitle}"`);
                     hideElement(parentElement, `Filtered title term: ${term}`);
                     return;
                 }
@@ -206,7 +265,7 @@
 
         // Skip if no valid date metadata is found
         if (!metadataDate) {
-            console.log('No valid date metadata found, skipping');
+            debugLog(`❌ HIDING - No valid date metadata found for: "${videoTitle}"`);
             return;
         }
 
@@ -217,12 +276,14 @@
 
         // Check if the video falls within the specified date range
         if (!videoDate || !isWithinDateRange(videoDate, startDate, endDate)) {
+            debugLog(`❌ HIDING - Outside date range: "${videoTitle}" (${metadataDate})`);
             hideElement(parentElement, `Outside date range: ${metadataDate}`);
             return;
         }
 
         // Optionally, skip streamed videos (if desired)
         if (isStreamed) {
+            debugLog(`❌ HIDING - Streamed video: "${videoTitle}" (${metadataDate})`);
             hideElement(parentElement, `Streamed video: ${metadataDate}`);
             return;
         }
@@ -231,6 +292,7 @@
         const videoId = getVideoId(parentElement);
         const channelName = getChannelName(parentElement);
         if (!videoId || !channelName) {
+            debugLog(`❌ HIDING - Missing video ID or channel name for: "${videoTitle}"`);
             hideElement(parentElement, 'Missing video ID or channel name');
             return;
         }
@@ -239,14 +301,11 @@
         for (const term of FILTERED_CHANNEL_TERMS) {
             const regex = new RegExp(`\\b${term}(?:'s)?\\b`, 'i');
             if (regex.test(channelName)) {
-                console.log(`Found "${term}" in channel name: "${channelName}", HIDING`);
+                debugLog(`❌ HIDING - Found "${term}" in channel name: "${channelName}" for video: "${videoTitle}"`);
                 hideElement(parentElement, `Filtered channel term: ${term}`);
                 return;
             }
         }
-
-        const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        console.log('Video ID:', videoId, '| Channel:', normalizedChannelName);
 
         // Extract and evaluate view count
         let viewCountText = null;
@@ -258,18 +317,30 @@
         });
 
         if (!viewCountText) {
-            console.log('No view count metadata found, skipping');
+            debugLog(`❌ HIDING - No view count metadata found for: "${videoTitle}"`);
             return;
         }
 
         const numericViews = parseViewCount(viewCountText);
+        const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+        // Comprehensive logging for all video details
+        debugLog(`📊 Video Details:`);
+        debugLog(`   Title: "${videoTitle}"`);
+        debugLog(`   Channel: "${channelName}" (normalized: "${normalizedChannelName}")`);
+        debugLog(`   Views: ${viewCountText} (${numericViews.toLocaleString()} numeric)`);
+        debugLog(`   Video ID: ${videoId}`);
+        debugLog(`   Date: ${metadataDate}`);
+
         if (numericViews < MINIMUM_VIEWS) {
+            debugLog(`❌ HIDING - Below minimum views: "${videoTitle}" (${viewCountText})`);
             hideElement(parentElement, `Below minimum views: ${viewCountText}`);
             return;
         }
 
         // Hide the video if it belongs to a subscribed channel
         if (subscribedChannels.has(normalizedChannelName)) {
+            debugLog(`❌ HIDING - Subscribed channel: "${channelName}" for video: "${videoTitle}"`);
             hideElement(parentElement, 'Subscribed');
             return;
         }
@@ -277,12 +348,14 @@
         // Handle view count threshold
         let viewCount = GM_getValue(videoId, 0) + 1;
         GM_setValue(videoId, viewCount);
-        console.log('View count:', viewCount);
+        debugLog(`👁️ View count for "${videoTitle}": ${viewCount}/${Threshold}`);
 
         if (viewCount > Threshold) {
+            debugLog(`❌ HIDING - Over threshold (${viewCount}/${Threshold}): "${videoTitle}"`);
             hideElement(parentElement, 'Over threshold');
             return;
         } else {
+            debugLog(`✅ SHOWING - Below threshold (${viewCount}/${Threshold}): "${videoTitle}"`);
             showElement(parentElement);
         }
     }
@@ -293,10 +366,10 @@
                 if (mutation.type === 'childList') {
                     mutation.addedNodes.forEach((node) => {
                         if (node.nodeType === Node.ELEMENT_NODE) {
-                            if (node.matches('ytd-rich-item-renderer, ytd-compact-video-renderer', 'ytd-compact-playlist-renderer', 'ytd-item-section-renderer')) {
+                            if (node.matches('ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer')) {
                                 processThumbnail(node);
                             } else {
-                                node.querySelectorAll('ytd-rich-item-renderer, ytd-compact-video-renderer','ytd-compact-playlist-renderer', 'ytd-item-section-renderer').forEach(processThumbnail);
+                                node.querySelectorAll('ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer').forEach(processThumbnail);
                             }
                         }
                     });
@@ -322,8 +395,8 @@
     }
 
     function processExistingThumbnails() {
-        const thumbnails = document.querySelectorAll('ytd-rich-item-renderer, ytd-compact-video-renderer', 'ytd-compact-playlist-renderer', 'ytd-item-section-renderer');
-        console.log('Processing existing thumbnails:', thumbnails.length);
+        const thumbnails = document.querySelectorAll('ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer');
+        debugLog('Processing existing thumbnails:', thumbnails.length);
         thumbnails.forEach(processThumbnail);
     }
 
@@ -331,9 +404,9 @@
         const storedChannels = GM_getValue('subscribedChannels');
         if (storedChannels) {
             subscribedChannels = new Set(JSON.parse(storedChannels));
-            console.log('Loaded stored subscribed channels:', Array.from(subscribedChannels));
+            debugLog('Loaded stored subscribed channels:', Array.from(subscribedChannels));
         } else {
-            console.log('No stored subscribed channels found');
+            debugLog('No stored subscribed channels found');
         }
     }
 
@@ -385,14 +458,14 @@
         loadStoredSubscribedChannels();
 
         if (window.location.pathname === '/feed/channels') {
-            console.log('On channels page, fetching subscribed channels');
+            debugLog('On channels page, fetching subscribed channels');
             fetchSubscribedChannels();
         } else if (shouldRunOnCurrentPage()) {
-            console.log('Processing thumbnails');
+            debugLog('Processing thumbnails');
             processExistingThumbnails();
             observeDOMChanges();
         } else {
-            console.log('Not on a target page, script inactive');
+            debugLog('Not on a target page, script inactive');
         }
     }
 
@@ -404,7 +477,7 @@
 
     document.addEventListener('yt-navigate-finish', (event) => {
         const currentUrl = event.detail?.url || window.location.href;
-        console.log('Using URL:', currentUrl);
+        debugLog('Using URL:', currentUrl);
 
         if (currentUrl.includes('/feed/channels')) {
             fetchSubscribedChannels();
@@ -416,9 +489,9 @@
                 observeDOMChanges();
             }, 1500); // 1.5 second delay
         } else {
-            console.log('Navigated to a non-target page, script inactive');
+            debugLog('Navigated to a non-target page, script inactive');
         }
     });
 
-    console.log('Script initialized');
+    debugLog('Script initialized');
 })();
