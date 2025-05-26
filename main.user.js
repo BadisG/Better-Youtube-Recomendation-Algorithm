@@ -125,6 +125,14 @@
                 return { isNormal: false, reason: 'Playlist element detected' };
             }
 
+            // Check for live streams and hide them
+            const hasLiveBadge = element.querySelector('[aria-label="LIVE"], .badge-style-type-live-now-alternate');
+            const hasWatchingCount = element.textContent.match(/\d+\s+watching/);
+
+            if (hasLiveBadge || hasWatchingCount) {
+                return { isNormal: false, reason: 'Live stream detected' };
+            }
+
             // Check for watched videos (progress bar)
             const hasProgressBar = element.querySelector('#progress, [class*="progress" i]');
             if (hasProgressBar) {
@@ -140,10 +148,6 @@
             const isCompactVideo = element.tagName === 'YTD-COMPACT-VIDEO-RENDERER';
             const isCompactPlaylist = element.tagName === 'YTD-COMPACT-PLAYLIST-RENDERER';
             const isItemSectionPlaylist = element.tagName === 'YTD-ITEM-SECTION-RENDERER';
-
-            if (element.textContent.includes('LIVE') && element.textContent.includes('watching')) {
-                return { isNormal: false, reason: 'Live video' };
-            }
 
             if (isCompactPlaylist || isItemSectionPlaylist) {
                 return { isNormal: false, reason: 'Playlist element detected' };
