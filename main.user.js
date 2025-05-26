@@ -125,11 +125,6 @@
                 return { isNormal: false, reason: 'Playlist element detected' };
             }
 
-            // Check for live videos
-            if (element.textContent.includes('LIVE') && element.textContent.includes('watching')) {
-                return { isNormal: false, reason: 'Live video' };
-            }
-
             // Check for watched videos (progress bar)
             const hasProgressBar = element.querySelector('#progress, [class*="progress" i]');
             if (hasProgressBar) {
@@ -317,7 +312,15 @@
         let viewCountText = null;
         metadataElements.forEach((element) => {
             const text = element.textContent.trim();
-            if (text.toLowerCase().includes('views')) {
+            const lowerText = text.toLowerCase();
+            // Check for date/streamed info
+            if (lowerText.match(/^(streamed\s+)?\d+\s+(second|minute|hour|day|week|month|year)s?\s+ago$/)) {
+                metadataDate = text;
+                isStreamed = lowerText.startsWith('streamed');
+            }
+
+            // Check for view count (modified condition here!)
+            if (lowerText.includes('view')) { // Check for "view" (singular)
                 viewCountText = text;
             }
         });
@@ -440,21 +443,34 @@
         return videoDate >= startDate && videoDate <= endDate;
     }
 
-    function parseViewCount(viewText) {
-        const match = viewText.toLowerCase().match(/([\d,.]+)\s*([kmb])/);
-        if (!match) return 0;
+function parseViewCount(viewText) {
+        const lowerViewText = viewText.toLowerCase();
 
-        const num = parseFloat(match[1].replace(/,/g, ''));
-        const unit = match[2];
+        // First, try to match with k, m, b units
+        let match = lowerViewText.match(/([\d,.]+)\s*([kmb])/);
 
-        let multiplier = 1;
-        switch (unit) {
-            case 'k': multiplier = 1_000; break;
-            case 'm': multiplier = 1_000_000; break;
-            case 'b': multiplier = 1_000_000_000; break;
+        if (match) {
+            const num = parseFloat(match[1].replace(/,/g, ''));
+            const unit = match[2];
+
+            let multiplier = 1;
+            switch (unit) {
+                case 'k': multiplier = 1_000; break;
+                case 'm': multiplier = 1_000_000; break;
+                case 'b': multiplier = 1_000_000_000; break;
+            }
+            return isNaN(num) ? 0 : num * multiplier;
+        } else {
+            // If no k, m, b unit, try to parse directly as a number
+            // Remove "view", "views", and commas, then parse
+            const numericValueMatch = lowerViewText.match(/(\d[\d,.]*)/); // Capture sequence of digits and commas/dots
+            if (numericValueMatch && numericValueMatch[1]) {
+                const num = parseFloat(numericValueMatch[1].replace(/,/g, ''));
+                return isNaN(num) ? 0 : num;
+            }
         }
 
-        return isNaN(num) ? 0 : num * multiplier;
+        return 0; // Default if no match found
     }
 
     function init() {
