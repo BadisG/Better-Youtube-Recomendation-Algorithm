@@ -305,7 +305,7 @@
 
         // NEW CODE: Check for filtered channel name terms
         for (const term of FILTERED_CHANNEL_TERMS) {
-            const regex = new RegExp(`\\b${term}(?:'s)?\\b`, 'i');
+            const regex = new RegExp(`\\b${term}(?:'s|s)?\\b`, 'i');
             if (regex.test(channelName)) {
                 debugLog(`❌ HIDING - Found "${term}" in channel name: "${channelName}" for video: "${videoTitle}"`);
                 hideElement(parentElement, `Filtered channel term: ${term}`);
