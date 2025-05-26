@@ -21,6 +21,9 @@
     const FILTERED_TITLE_TERMS = ['fsfzzerz', 'sdfzertzerzer']; // Add words to filter titles that have those
     const FILTERED_CHANNEL_TERMS = ['qfrtzeerezt', 'truytuhfhgr']; // Add words to filter channel names that have those
 
+    // Define a constant for all target video/playlist container selectors
+    const VIDEO_CONTAINER_SELECTORS = 'ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer';
+
     // Debug logging function
     function debugLog(...args) {
         if (DEBUG) {
@@ -210,10 +213,7 @@
         }
 
         // Look for the parent element to ensure we are processing a valid video/playlist thumbnail
-        const parentElement = thumbnailElement.closest('ytd-rich-item-renderer') ||
-              thumbnailElement.closest('ytd-compact-video-renderer') ||
-              thumbnailElement.closest('ytd-compact-playlist-renderer') ||
-              thumbnailElement.closest('ytd-item-section-renderer');
+        const parentElement = thumbnailElement.closest(VIDEO_CONTAINER_SELECTORS);
 
         if (!parentElement) {
             debugLog('No parent element found, skipping');
@@ -366,18 +366,15 @@
                 if (mutation.type === 'childList') {
                     mutation.addedNodes.forEach((node) => {
                         if (node.nodeType === Node.ELEMENT_NODE) {
-                            if (node.matches('ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer')) {
+                            if (node.matches(VIDEO_CONTAINER_SELECTORS)) {
                                 processThumbnail(node);
                             } else {
-                                node.querySelectorAll('ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer').forEach(processThumbnail);
+                                node.querySelectorAll(VIDEO_CONTAINER_SELECTORS).forEach(processThumbnail);
                             }
                         }
                     });
                 } else if (mutation.type === 'attributes' && mutation.target.id === 'progress') {
-                    const thumbnailElement = mutation.target.closest('ytd-rich-item-renderer') ||
-                          mutation.target.closest('ytd-compact-video-renderer')||
-                          mutation.target.closest('ytd-compact-playlist-renderer')||
-                          mutation.target.closest('ytd-item-section-renderer');
+                    const thumbnailElement = mutation.target.closest(VIDEO_CONTAINER_SELECTORS);
                     if (thumbnailElement) {
                         processThumbnail(thumbnailElement);
                     }
@@ -395,7 +392,7 @@
     }
 
     function processExistingThumbnails() {
-        const thumbnails = document.querySelectorAll('ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer');
+        const thumbnails = document.querySelectorAll(VIDEO_CONTAINER_SELECTORS);
         debugLog('Processing existing thumbnails:', thumbnails.length);
         thumbnails.forEach(processThumbnail);
     }
