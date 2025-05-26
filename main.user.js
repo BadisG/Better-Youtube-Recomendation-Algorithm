@@ -22,7 +22,7 @@
     const FILTERED_CHANNEL_TERMS = ['qfrtzeerezt', 'truytuhfhgr']; // Add words to filter channel names that have those
 
     // Define a constant for all target video/playlist container selectors
-    const VIDEO_CONTAINER_SELECTORS = 'ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer';
+    const VIDEO_CONTAINER_SELECTORS = 'ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer, yt-lockup-view-model';
 
     // Debug logging function
     function debugLog(...args) {
@@ -110,6 +110,16 @@
               window.location.href === 'https://www.youtube.com';
         const isWatchPage = window.location.href.includes('/watch?v=');
 
+        if (element.tagName === 'YT-LOCKUP-VIEW-MODEL') {
+            const contentType = element.getAttribute('ytb-content-type');
+            const mixTextElement = element.querySelector('.badge-shape-wiz__text'); // Look for the "Mix" text
+            const isMixByText = mixTextElement && mixTextElement.textContent.trim().toLowerCase() === 'mix';
+
+            if (contentType === 'playlist' || isMixByText) {
+                return { isNormal: false, reason: `Mix/Playlist (yt-lockup-view-model, type: ${contentType || 'N/A'}, text: ${isMixByText ? 'Mix' : 'N/A'})` };
+            }
+        }
+
         // Different handling for different page types
         if (isWatchPage) {
             // On watch pages, compact video renderers are the normal recommended videos
@@ -190,14 +200,13 @@
         const isWatchPage = window.location.pathname === '/watch';
 
         if (isHomePage) {
-            // On homepage, process rich items and some compact videos
             return element.tagName === 'YTD-RICH-ITEM-RENDERER' ||
-                element.tagName === 'YTD-COMPACT-VIDEO-RENDERER';
+                element.tagName === 'YTD-COMPACT-VIDEO-RENDERER' ||
+                element.tagName === 'YT-LOCKUP-VIEW-MODEL';
         } else if (isWatchPage) {
-            // On watch pages, only process compact video renderers (sidebar recommendations)
-            return element.tagName === 'YTD-COMPACT-VIDEO-RENDERER';
+            return element.tagName === 'YTD-COMPACT-VIDEO-RENDERER' ||
+                element.tagName === 'YT-LOCKUP-VIEW-MODEL';
         }
-
         return false;
     }
 
