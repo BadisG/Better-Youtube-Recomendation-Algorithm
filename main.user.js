@@ -31,7 +31,17 @@
         }
     }
 
-   function shouldRunOnCurrentPage() {
+    // Colored logging functions
+    function logHiding(reason, title) {
+            debugLog(`%c❌ HIDING - ${reason}: "${title}"`, 'color: #C03030; font-weight: bold;');
+
+    }
+
+    function logShowing(reason, title) {
+            debugLog(`%c✅ SHOWING - ${reason}: "${title}"`, 'color: #30C030; font-weight: bold;');
+    }
+
+    function shouldRunOnCurrentPage() {
         const pathname = window.location.pathname;
         return pathname === '/' ||
             pathname === '/watch' ||
@@ -42,17 +52,14 @@
         function updateSubscribedChannels() {
             const channelElements = document.querySelectorAll('yt-formatted-string#text.style-scope.ytd-channel-name');
             let newSubscribedChannels = [];
-
             channelElements.forEach(element => {
                 const channelName = element.textContent.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
                 if (!newSubscribedChannels.includes(channelName)) {
                     newSubscribedChannels.push(channelName);
                 }
             });
-
             GM_setValue('subscribedChannels', JSON.stringify(newSubscribedChannels));
             subscribedChannels = new Set(newSubscribedChannels);
-
             debugLog('Fetched subscribed channels:', Array.from(subscribedChannels));
         }
 
@@ -64,7 +71,6 @@
                     obs.disconnect();
                 }
             });
-
             observer.observe(document.body, {
                 childList: true,
                 subtree: true
@@ -99,16 +105,15 @@
                     return link.textContent.trim();
                 }
             }
-
             return null;
         }
     }
 
     function isNormalVideo(element) {
-
         if (element.tagName.toUpperCase() === 'YT-LOCKUP-VIEW-MODEL') {
             return { isNormal: false, reason: 'yt-lockup-view-model (Mix/Collection) detected' };
         }
+
         // Check current URL
         const isHomePage = window.location.href === 'https://www.youtube.com/' ||
               window.location.href === 'https://www.youtube.com';
@@ -128,7 +133,6 @@
             // Check for live streams and hide them
             const hasLiveBadge = element.querySelector('[aria-label="LIVE"], .badge-style-type-live-now-alternate');
             const hasWatchingCount = element.textContent.match(/\d+\s+watching/);
-
             if (hasLiveBadge || hasWatchingCount) {
                 return { isNormal: false, reason: 'Live stream detected' };
             }
@@ -141,7 +145,6 @@
 
             // For watch pages, don't check duration - compact videos don't always show duration the same way
             return { isNormal: true, reason: 'Normal video (watch page)' };
-
         } else if (isHomePage) {
             // Original homepage logic
             const isRichItem = element.tagName === 'YTD-RICH-ITEM-RENDERER';
@@ -168,16 +171,15 @@
             return { isNormal: true, reason: 'Normal video (homepage)' };
         }
 
-    // For other pages, default to normal
-    return { isNormal: true, reason: 'Default normal' };
-}
+        // For other pages, default to normal
+        return { isNormal: true, reason: 'Default normal' };
+    }
 
     function hideElement(element, reason) {
         if (element) {
             element.style.display = 'none';
             element.setAttribute('data-hide-reason', reason);
         }
-        debugLog(reason[0].toUpperCase() + reason.slice(1) + ' \x1b[31m%s\x1b[0m', 'HIDING');
     }
 
     function showElement(element) {
@@ -185,7 +187,6 @@
             element.style.display = '';
             element.removeAttribute('data-hide-reason');
         }
-        debugLog('Below threshold: \x1b[32m%s\x1b[0m', 'SHOWING');
     }
 
     function shouldProcessElement(element) {
@@ -219,38 +220,55 @@
 
         // Look for the parent element to ensure we are processing a valid video/playlist thumbnail
         const parentElement = thumbnailElement.closest(VIDEO_CONTAINER_SELECTORS);
-
         if (!parentElement) {
             debugLog('No parent element found, skipping');
             return;
         }
 
-        // Check if the element represents a normal video
-        const normalVideoCheck = isNormalVideo(parentElement);
-        if (!normalVideoCheck.isNormal) {
-            debugLog(`❌ HIDING - Not a normal video: ${normalVideoCheck.reason}`);
-            hideElement(parentElement, `Not a normal video: ${normalVideoCheck.reason}`);
-            return;
-        }
-
-        // Get video title first
+        // Get video title first for logging purposes
         const videoTitleElement = parentElement.querySelector('#video-title, yt-formatted-string#video-title');
         let videoTitle = 'Unknown Title';
         if (videoTitleElement) {
             videoTitle = videoTitleElement.textContent.trim();
         }
+        debugLog(`%cProcessing: "${videoTitle}"`, 'font-weight: bold');
 
-        debugLog(`\n📹 Processing: "${videoTitle}"`);
+        // Check if the element represents a normal video - FIRST CHECK
+        const normalVideoCheck = isNormalVideo(parentElement);
+        if (!normalVideoCheck.isNormal) {
+            logHiding(`Not a normal video: ${normalVideoCheck.reason}`, videoTitle);
+            hideElement(parentElement, `Not a normal video: ${normalVideoCheck.reason}`);
+            return; // EARLY RETURN - prevents further processing
+        }
 
-        // Check for filtered title terms
+        // Check for filtered title terms - SECOND CHECK
         if (videoTitleElement) {
             for (const term of FILTERED_TITLE_TERMS) {
                 const regex = new RegExp(`\\b${term}(?:'s|s)?\\b`, 'i');
                 if (regex.test(videoTitle)) {
-                    debugLog(`❌ HIDING - Found "${term}" in title: "${videoTitle}"`);
+                    logHiding(`Found "${term}" in title`, videoTitle);
                     hideElement(parentElement, `Filtered title term: ${term}`);
-                    return;
+                    return; // EARLY RETURN
                 }
+            }
+        }
+
+        // Get video ID and channel name
+        const videoId = getVideoId(parentElement);
+        const channelName = getChannelName(parentElement);
+        if (!videoId || !channelName) {
+            logHiding('Missing video ID or channel name', videoTitle);
+            hideElement(parentElement, 'Missing video ID or channel name');
+            return; // EARLY RETURN
+        }
+
+        // Check for filtered channel name terms - THIRD CHECK
+        for (const term of FILTERED_CHANNEL_TERMS) {
+            const regex = new RegExp(`\\b${term}(?:'s|s)?\\b`, 'i');
+            if (regex.test(channelName)) {
+                logHiding(`Found "${term}" in channel name: "${channelName}"`, videoTitle);
+                hideElement(parentElement, `Filtered channel term: ${term}`);
+                return; // EARLY RETURN
             }
         }
 
@@ -270,8 +288,9 @@
 
         // Skip if no valid date metadata is found
         if (!metadataDate) {
-            debugLog(`❌ HIDING - No valid date metadata found for: "${videoTitle}"`);
-            return;
+            logHiding('No valid date metadata found', videoTitle);
+            hideElement(parentElement, 'No valid date metadata found');
+            return; // EARLY RETURN
         }
 
         // Parse the publication date from the metadata
@@ -281,35 +300,16 @@
 
         // Check if the video falls within the specified date range
         if (!videoDate || !isWithinDateRange(videoDate, startDate, endDate)) {
-            debugLog(`❌ HIDING - Outside date range: "${videoTitle}" (${metadataDate})`);
+            logHiding(`Outside date range: ${metadataDate}`, videoTitle);
             hideElement(parentElement, `Outside date range: ${metadataDate}`);
-            return;
+            return; // EARLY RETURN
         }
 
         // Optionally, skip streamed videos (if desired)
         if (isStreamed) {
-            debugLog(`❌ HIDING - Streamed video: "${videoTitle}" (${metadataDate})`);
+            logHiding(`Streamed video: ${metadataDate}`, videoTitle);
             hideElement(parentElement, `Streamed video: ${metadataDate}`);
-            return;
-        }
-
-        // Get video ID and channel name
-        const videoId = getVideoId(parentElement);
-        const channelName = getChannelName(parentElement);
-        if (!videoId || !channelName) {
-            debugLog(`❌ HIDING - Missing video ID or channel name for: "${videoTitle}"`);
-            hideElement(parentElement, 'Missing video ID or channel name');
-            return;
-        }
-
-        // NEW CODE: Check for filtered channel name terms
-        for (const term of FILTERED_CHANNEL_TERMS) {
-            const regex = new RegExp(`\\b${term}(?:'s|s)?\\b`, 'i');
-            if (regex.test(channelName)) {
-                debugLog(`❌ HIDING - Found "${term}" in channel name: "${channelName}" for video: "${videoTitle}"`);
-                hideElement(parentElement, `Filtered channel term: ${term}`);
-                return;
-            }
+            return; // EARLY RETURN
         }
 
         // Extract and evaluate view count
@@ -322,7 +322,6 @@
                 metadataDate = text;
                 isStreamed = lowerText.startsWith('streamed');
             }
-
             // Check for view count (modified condition here!)
             if (lowerText.includes('view')) { // Check for "view" (singular)
                 viewCountText = text;
@@ -330,15 +329,16 @@
         });
 
         if (!viewCountText) {
-            debugLog(`❌ HIDING - No view count metadata found for: "${videoTitle}"`);
-            return;
+            logHiding('No view count metadata found', videoTitle);
+            hideElement(parentElement, 'No view count metadata found');
+            return; // EARLY RETURN
         }
 
         const numericViews = parseViewCount(viewCountText);
         const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
         // Comprehensive logging for all video details
-        debugLog(`📊 Video Details:`);
+        debugLog(`   Video Details:`);
         debugLog(`   Title: "${videoTitle}"`);
         debugLog(`   Channel: "${channelName}" (normalized: "${normalizedChannelName}")`);
         debugLog(`   Views: ${viewCountText} (${numericViews.toLocaleString()} numeric)`);
@@ -346,29 +346,29 @@
         debugLog(`   Date: ${metadataDate}`);
 
         if (numericViews < MINIMUM_VIEWS) {
-            debugLog(`❌ HIDING - Below minimum views: "${videoTitle}" (${viewCountText})`);
+            logHiding(`Below minimum views: ${viewCountText}`, videoTitle);
             hideElement(parentElement, `Below minimum views: ${viewCountText}`);
-            return;
+            return; // EARLY RETURN
         }
 
         // Hide the video if it belongs to a subscribed channel
         if (subscribedChannels.has(normalizedChannelName)) {
-            debugLog(`❌ HIDING - Subscribed channel: "${channelName}" for video: "${videoTitle}"`);
+            logHiding(`Subscribed channel: "${channelName}"`, videoTitle);
             hideElement(parentElement, 'Subscribed');
-            return;
+            return; // EARLY RETURN
         }
 
         // Handle view count threshold
         let viewCount = GM_getValue(videoId, 0) + 1;
         GM_setValue(videoId, viewCount);
-        debugLog(`👁️ View count for "${videoTitle}": ${viewCount}/${Threshold}`);
+        debugLog(`View count for "${videoTitle}": ${viewCount}/${Threshold}`);
 
         if (viewCount > Threshold) {
-            debugLog(`❌ HIDING - Over threshold (${viewCount}/${Threshold}): "${videoTitle}"`);
+            logHiding(`Over threshold (${viewCount}/${Threshold})`, videoTitle);
             hideElement(parentElement, 'Over threshold');
-            return;
+            return; // EARLY RETURN
         } else {
-            debugLog(`✅ SHOWING - Below threshold (${viewCount}/${Threshold}): "${videoTitle}"`);
+            logShowing(`Below threshold (${viewCount}/${Threshold})`, videoTitle);
             showElement(parentElement);
         }
     }
@@ -423,11 +423,9 @@
     function parseDateFromMetadata(metadataText) {
         const now = new Date();
         const match = metadataText.match(/^(Streamed\s+)?(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago$/);
-
         if (match) {
             const value = parseInt(match[2], 10); // The numeric value
             const unit = match[3]; // The time unit
-
             switch (unit) {
                 case 'second': return new Date(now - value * 1000);
                 case 'minute': return new Date(now - value * 60000);
@@ -438,7 +436,6 @@
                 case 'year': return new Date(now.setFullYear(now.getFullYear() - value));
             }
         }
-
         console.error('Unrecognized date format (not a date):', metadataText);
         return null;
     }
@@ -447,16 +444,13 @@
         return videoDate >= startDate && videoDate <= endDate;
     }
 
-function parseViewCount(viewText) {
+    function parseViewCount(viewText) {
         const lowerViewText = viewText.toLowerCase();
-
         // First, try to match with k, m, b units
         let match = lowerViewText.match(/([\d,.]+)\s*([kmb])/);
-
         if (match) {
             const num = parseFloat(match[1].replace(/,/g, ''));
             const unit = match[2];
-
             let multiplier = 1;
             switch (unit) {
                 case 'k': multiplier = 1_000; break;
@@ -473,13 +467,11 @@ function parseViewCount(viewText) {
                 return isNaN(num) ? 0 : num;
             }
         }
-
         return 0; // Default if no match found
     }
 
     function init() {
         loadStoredSubscribedChannels();
-
         if (window.location.pathname === '/feed/channels') {
             debugLog('On channels page, fetching subscribed channels');
             fetchSubscribedChannels();
@@ -501,7 +493,6 @@ function parseViewCount(viewText) {
     document.addEventListener('yt-navigate-finish', (event) => {
         const currentUrl = event.detail?.url || window.location.href;
         debugLog('Using URL:', currentUrl);
-
         if (currentUrl.includes('/feed/channels')) {
             fetchSubscribedChannels();
         } else if (shouldRunOnCurrentPage()) {
