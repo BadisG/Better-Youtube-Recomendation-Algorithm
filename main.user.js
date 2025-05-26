@@ -338,11 +338,8 @@
         const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
         // Comprehensive logging for all video details
-        debugLog(`   Video Details:`);
-        debugLog(`   Title: "${videoTitle}"`);
-        debugLog(`   Channel: "${channelName}" (normalized: "${normalizedChannelName}")`);
-        debugLog(`   Views: ${viewCountText} (${numericViews.toLocaleString()} numeric)`);
-        debugLog(`   Video ID: ${videoId}`);
+        debugLog(`   Channel: ${channelName}`);
+        debugLog(`   Views: ${viewCountText} (${numericViews.toLocaleString()} views)`);
         debugLog(`   Date: ${metadataDate}`);
 
         if (numericViews < MINIMUM_VIEWS) {
@@ -361,7 +358,7 @@
         // Handle view count threshold
         let viewCount = GM_getValue(videoId, 0) + 1;
         GM_setValue(videoId, viewCount);
-        debugLog(`View count for "${videoTitle}": ${viewCount}/${Threshold}`);
+        debugLog(`View count: ${viewCount}/${Threshold}`);
 
         if (viewCount > Threshold) {
             logHiding(`Over threshold (${viewCount}/${Threshold})`, videoTitle);
