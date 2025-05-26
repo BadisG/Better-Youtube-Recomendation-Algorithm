@@ -105,20 +105,14 @@
     }
 
     function isNormalVideo(element) {
+
+        if (element.tagName.toUpperCase() === 'YT-LOCKUP-VIEW-MODEL') {
+            return { isNormal: false, reason: 'yt-lockup-view-model (Mix/Collection) detected' };
+        }
         // Check current URL
         const isHomePage = window.location.href === 'https://www.youtube.com/' ||
               window.location.href === 'https://www.youtube.com';
         const isWatchPage = window.location.href.includes('/watch?v=');
-
-        if (element.tagName === 'YT-LOCKUP-VIEW-MODEL') {
-            const contentType = element.getAttribute('ytb-content-type');
-            const mixTextElement = element.querySelector('.badge-shape-wiz__text'); // Look for the "Mix" text
-            const isMixByText = mixTextElement && mixTextElement.textContent.trim().toLowerCase() === 'mix';
-
-            if (contentType === 'playlist' || isMixByText) {
-                return { isNormal: false, reason: `Mix/Playlist (yt-lockup-view-model, type: ${contentType || 'N/A'}, text: ${isMixByText ? 'Mix' : 'N/A'})` };
-            }
-        }
 
         // Different handling for different page types
         if (isWatchPage) {
@@ -200,13 +194,16 @@
         const isWatchPage = window.location.pathname === '/watch';
 
         if (isHomePage) {
+            // On homepage, process rich items and some compact videos
             return element.tagName === 'YTD-RICH-ITEM-RENDERER' ||
-                element.tagName === 'YTD-COMPACT-VIDEO-RENDERER' ||
-                element.tagName === 'YT-LOCKUP-VIEW-MODEL';
+                element.tagName === 'YTD-COMPACT-VIDEO-RENDERER';
         } else if (isWatchPage) {
-            return element.tagName === 'YTD-COMPACT-VIDEO-RENDERER' ||
-                element.tagName === 'YT-LOCKUP-VIEW-MODEL';
+            // On watch pages, only process compact video renderers (sidebar recommendations)
+            const tagName = element.tagName.toUpperCase(); // Normalize to uppercase
+            return tagName === 'YTD-COMPACT-VIDEO-RENDERER' || // Sidebar videos
+                tagName === 'YT-LOCKUP-VIEW-MODEL';
         }
+
         return false;
     }
 
