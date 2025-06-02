@@ -18,6 +18,8 @@
     let Threshold = 10;
     const MINIMUM_VIEWS = 0; // Add a minimum views threshold here
     let subscribedChannels = new Set();
+    let currentObserver = null; // Track the current observer
+    let processingQueue = new Set(); // Prevent duplicate processing
     const FILTERED_TITLE_TERMS = ['fsfzzerz', 'sdfzertzerzer']; // Add words to filter titles that have those
     const FILTERED_CHANNEL_TERMS = ['qfrtzeerezt', 'truytuhfhgr']; // Add words to filter channel names that have those
 
@@ -236,7 +238,7 @@
         // Check if the element represents a normal video - FIRST CHECK
         const normalVideoCheck = isNormalVideo(parentElement);
         if (!normalVideoCheck.isNormal) {
-            logHiding(`Not a normal video: ${normalVideoCheck.reason}`, videoTitle);
+            logHiding(`${normalVideoCheck.reason}`, videoTitle);
             hideElement(parentElement, `Not a normal video: ${normalVideoCheck.reason}`);
             return; // EARLY RETURN - prevents further processing
         }
@@ -371,7 +373,13 @@
     }
 
     function observeDOMChanges() {
-        const observer = new MutationObserver((mutations) => {
+        // Disconnect existing observer if any
+        if (currentObserver) {
+            currentObserver.disconnect();
+            currentObserver = null;
+        }
+
+        currentObserver = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
                 if (mutation.type === 'childList') {
                     mutation.addedNodes.forEach((node) => {
@@ -392,7 +400,7 @@
             });
         });
 
-        observer.observe(document.body, {
+        currentObserver.observe(document.body, {
             childList: true,
             subtree: true,
             attributes: true,
@@ -405,6 +413,26 @@
         const thumbnails = document.querySelectorAll(VIDEO_CONTAINER_SELECTORS);
         debugLog('Processing existing thumbnails:', thumbnails.length);
         thumbnails.forEach(processThumbnail);
+    }
+
+    // Enhanced processing function with retry mechanism
+    function processPageWithRetry(maxRetries = 3, delay = 500) {
+        let retryCount = 0;
+
+        function attemptProcess() {
+            const thumbnails = document.querySelectorAll(VIDEO_CONTAINER_SELECTORS);
+            debugLog(`Attempt ${retryCount + 1}: Found ${thumbnails.length} thumbnails`);
+
+            if (thumbnails.length > 0 || retryCount >= maxRetries) {
+                processExistingThumbnails();
+                observeDOMChanges(); // Re-establish observer
+            } else {
+                retryCount++;
+                setTimeout(attemptProcess, delay);
+            }
+        }
+
+        attemptProcess();
     }
 
     function loadStoredSubscribedChannels() {
@@ -474,11 +502,64 @@
             fetchSubscribedChannels();
         } else if (shouldRunOnCurrentPage()) {
             debugLog('Processing thumbnails');
-            processExistingThumbnails();
-            observeDOMChanges();
+            processPageWithRetry();
         } else {
             debugLog('Not on a target page, script inactive');
         }
+    }
+
+    // Enhanced navigation handler
+    document.addEventListener('yt-navigate-finish', (event) => {
+        const currentUrl = event.detail?.url || window.location.href;
+        debugLog('Navigation finished, URL:', currentUrl);
+
+        // Clear processing queue on navigation
+        processingQueue.clear();
+
+        if (currentUrl.includes('/feed/channels')) {
+            fetchSubscribedChannels();
+        } else if (shouldRunOnCurrentPage()) {
+            // Use the retry mechanism instead of a fixed delay
+            processPageWithRetry(5, 300); // Try up to 5 times with 300ms intervals
+        } else {
+            debugLog('Navigated to a non-target page, script inactive');
+            // Disconnect observer when not needed
+            if (currentObserver) {
+                currentObserver.disconnect();
+                currentObserver = null;
+            }
+        }
+    });
+
+    // Also listen for the start of navigation to prepare
+    document.addEventListener('yt-navigate-start', () => {
+        debugLog('Navigation starting...');
+        // Optionally disconnect observer during navigation
+        if (currentObserver) {
+            currentObserver.disconnect();
+        }
+    });
+
+    // Additional observer for specific YouTube content updates
+    const ytAppObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            if (mutation.type === 'attributes' &&
+                (mutation.attributeName === 'video-id' || mutation.attributeName === 'active')) {
+                debugLog('YouTube app state changed');
+                if (shouldRunOnCurrentPage()) {
+                    setTimeout(() => processExistingThumbnails(), 100);
+                }
+            }
+        }
+    });
+
+    // Observe the YouTube app element for changes
+    const ytApp = document.querySelector('ytd-app');
+    if (ytApp) {
+        ytAppObserver.observe(ytApp, {
+            attributes: true,
+            attributeFilter: ['video-id', 'active']
+        });
     }
 
     if (document.readyState === 'complete') {
@@ -486,23 +567,6 @@
     } else {
         window.addEventListener('load', init);
     }
-
-    document.addEventListener('yt-navigate-finish', (event) => {
-        const currentUrl = event.detail?.url || window.location.href;
-        debugLog('Using URL:', currentUrl);
-        if (currentUrl.includes('/feed/channels')) {
-            fetchSubscribedChannels();
-        } else if (shouldRunOnCurrentPage()) {
-            // Add a delay to wait for YouTube to load recommendations
-            setTimeout(() => {
-                processExistingThumbnails();
-                // Re-initialize the observer to catch any new thumbnails
-                observeDOMChanges();
-            }, 1500); // 1.5 second delay
-        } else {
-            debugLog('Navigated to a non-target page, script inactive');
-        }
-    });
 
     debugLog('Script initialized');
 })();
