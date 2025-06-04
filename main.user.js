@@ -179,8 +179,14 @@
 
     function hideElement(element, reason) {
         if (element) {
-            element.style.display = 'none';
+            // Use multiple hiding methods with !important
+            element.style.setProperty('display', 'none', 'important');
+            element.style.setProperty('visibility', 'hidden', 'important');
+            element.style.setProperty('opacity', '0', 'important');
+            element.style.setProperty('height', '0', 'important');
+            element.style.setProperty('overflow', 'hidden', 'important');
             element.setAttribute('data-hide-reason', reason);
+            element.setAttribute('hidden', 'true');
         }
     }
 
@@ -495,8 +501,61 @@
         return 0; // Default if no match found
     }
 
+    // Add this after your constants but before the functions
+    function injectCSS() {
+        const style = document.createElement('style');
+        style.textContent = `
+        [data-hide-reason] {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            height: 0 !important;
+            overflow: hidden !important;
+        }
+    `;
+        document.head.appendChild(style);
+    }
+
+    function monitorHiddenElements() {
+        setInterval(() => {
+            const hiddenElements = document.querySelectorAll('[data-hide-reason]');
+            hiddenElements.forEach(element => {
+                if (element.style.display !== 'none') {
+                    const reason = element.getAttribute('data-hide-reason');
+                    hideElement(element, reason);
+                    debugLog(`Re-hiding element that reappeared: ${reason}`);
+                }
+            });
+        }, 1000); // Check every second
+    }
+
+    function observeFirstVideo() {
+        // Specifically watch for the main video content to load
+        const observer = new MutationObserver((mutations, obs) => {
+            const primaryVideo = document.querySelector('ytd-watch-flexy');
+            if (primaryVideo) {
+                debugLog('Main video container detected, processing recommendations');
+                setTimeout(() => {
+                    processExistingThumbnails();
+                    observeDOMChanges();
+                }, 300);
+                obs.disconnect();
+            }
+        });
+
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+
+        // Disconnect after 5 seconds to prevent infinite observation
+        setTimeout(() => observer.disconnect(), 5000);
+    }
+
     function init() {
+        injectCSS();
         loadStoredSubscribedChannels();
+        monitorHiddenElements(); // Add this line
         if (window.location.pathname === '/feed/channels') {
             debugLog('On channels page, fetching subscribed channels');
             fetchSubscribedChannels();
@@ -513,17 +572,15 @@
         const currentUrl = event.detail?.url || window.location.href;
         debugLog('Navigation finished, URL:', currentUrl);
 
-        // Clear processing queue on navigation
         processingQueue.clear();
 
         if (currentUrl.includes('/feed/channels')) {
             fetchSubscribedChannels();
         } else if (shouldRunOnCurrentPage()) {
-            // Use the retry mechanism instead of a fixed delay
-            processPageWithRetry(5, 300); // Try up to 5 times with 300ms intervals
+            observeFirstVideo(); // Add this line
+            processPageWithRetry(5, 300);
         } else {
             debugLog('Navigated to a non-target page, script inactive');
-            // Disconnect observer when not needed
             if (currentObserver) {
                 currentObserver.disconnect();
                 currentObserver = null;
