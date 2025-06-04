@@ -7,6 +7,10 @@
 // @match        https://www.youtube.com/watch?*
 // @match        https://www.youtube.com/feed/channels
 // @match        https://www.youtube.com/results*
+// @match        https://www.youtube.com/user/*
+// @match        https://www.youtube.com/channel/*
+// @match        https://www.youtube.com/c/*
+// @match        https://www.youtube.com/@*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // ==/UserScript==
