@@ -11,6 +11,7 @@
 // @match        https://www.youtube.com/channel/*
 // @match        https://www.youtube.com/c/*
 // @match        https://www.youtube.com/@*
+// @match        https://www.youtube.com/live/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // ==/UserScript==
@@ -556,10 +557,40 @@
         setTimeout(() => observer.disconnect(), 5000);
     }
 
+    function convertLiveUrlToWatchUrl(url) {
+        // Convert /live/VIDEO_ID to /watch?v=VIDEO_ID
+        const liveMatch = url.match(/\/live\/([^?]+)/);
+        if (liveMatch) {
+            const videoId = liveMatch[1];
+            let newUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+            // Extract timestamp if present
+            const timeMatch = url.match(/[?&]t=(\d+)/);
+            if (timeMatch) {
+                newUrl += `&t=${timeMatch[1]}s`;
+            }
+
+            return newUrl;
+        }
+        return url;
+    }
+
+    function convertCurrentUrl() {
+        const currentUrl = window.location.href;
+        if (currentUrl.includes('/live/')) {
+            const newUrl = convertLiveUrlToWatchUrl(currentUrl);
+            if (newUrl !== currentUrl) {
+                debugLog('Converting live URL to watch URL:', newUrl);
+                window.history.replaceState({}, '', newUrl);
+            }
+        }
+    }
+
     function init() {
         injectCSS();
         loadStoredSubscribedChannels();
         monitorHiddenElements(); // Add this line
+        convertCurrentUrl(); // Add this line
         if (window.location.pathname === '/feed/channels') {
             debugLog('On channels page, fetching subscribed channels');
             fetchSubscribedChannels();
@@ -576,6 +607,7 @@
         const currentUrl = event.detail?.url || window.location.href;
         debugLog('Navigation finished, URL:', currentUrl);
 
+        convertCurrentUrl(); // Add this line
         processingQueue.clear();
 
         if (currentUrl.includes('/feed/channels')) {
