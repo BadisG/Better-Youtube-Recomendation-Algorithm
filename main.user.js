@@ -510,14 +510,20 @@
     function injectCSS() {
         const style = document.createElement('style');
         style.textContent = `
-        [data-hide-reason] {
-            display: none !important;
-            visibility: hidden !important;
-            opacity: 0 !important;
-            height: 0 !important;
-            overflow: hidden !important;
-        }
-    `;
+    [data-hide-reason] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        height: 0 !important;
+        width: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        overflow: hidden !important;
+        position: absolute !important;
+        left: -9999px !important;
+    }
+`;
         document.head.appendChild(style);
     }
 
