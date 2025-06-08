@@ -40,8 +40,9 @@
 
     // Colored logging functions
     function logHiding(reason, title) {
-            debugLog(`%c❌ HIDING - ${reason}: "${title}"`, 'color: #C03030; font-weight: bold;');
-
+        const isHomePage = window.location.pathname === '/';
+        const action = isHomePage ? 'HIDING' : 'DELETING';
+        debugLog(`%c❌ ${action} - ${reason}: "${title}"`, 'color: #C03030; font-weight: bold;');
     }
 
     function logShowing(reason, title) {
@@ -184,7 +185,16 @@
 
     function hideElement(element, reason) {
         if (element) {
-            element.remove(); // This completely removes the element from the DOM
+            const isHomePage = window.location.pathname === '/';
+
+            if (isHomePage) {
+                // On homepage, hide instead of delete
+                element.style.display = 'none';
+                element.setAttribute('data-hide-reason', reason);
+            } else {
+                // On other pages (like watch page), still remove completely
+                element.remove();
+            }
         }
     }
 
