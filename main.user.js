@@ -184,14 +184,7 @@
 
     function hideElement(element, reason) {
         if (element) {
-            // Use multiple hiding methods with !important
-            element.style.setProperty('display', 'none', 'important');
-            element.style.setProperty('visibility', 'hidden', 'important');
-            element.style.setProperty('opacity', '0', 'important');
-            element.style.setProperty('height', '0', 'important');
-            element.style.setProperty('overflow', 'hidden', 'important');
-            element.setAttribute('data-hide-reason', reason);
-            element.setAttribute('hidden', 'true');
+            element.remove(); // This completely removes the element from the DOM
         }
     }
 
