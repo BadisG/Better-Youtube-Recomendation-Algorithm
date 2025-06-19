@@ -4,15 +4,7 @@
 // @author       BadisG
 // @version      8.0
 // @description  Count and hide YouTube thumbnails after 10 views, excluding subscribed channels, and hide playlist, live, and watched thumbnails.
-// @match        https://www.youtube.com/
-// @match        https://www.youtube.com/watch?*
-// @match        https://www.youtube.com/feed/channels
-// @match        https://www.youtube.com/results*
-// @match        https://www.youtube.com/user/*
-// @match        https://www.youtube.com/channel/*
-// @match        https://www.youtube.com/c/*
-// @match        https://www.youtube.com/@*
-// @match        https://www.youtube.com/live/*
+// @match        https://www.youtube.com/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // ==/UserScript==
