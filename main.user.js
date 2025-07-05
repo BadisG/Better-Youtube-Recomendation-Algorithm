@@ -539,13 +539,16 @@
     function observeFirstVideo() {
         // Specifically watch for the main video content to load
         const observer = new MutationObserver((mutations, obs) => {
+            // Check for both the main video container and sidebar recommendations
             const primaryVideo = document.querySelector('ytd-watch-flexy');
-            if (primaryVideo) {
-                debugLog('Main video container detected, processing recommendations');
+            const sidebarRecommendations = document.querySelectorAll('ytd-compact-video-renderer');
+
+            if (primaryVideo && sidebarRecommendations.length > 0) {
+                debugLog('Main video container and recommendations detected, processing...');
                 setTimeout(() => {
                     processExistingThumbnails();
                     observeDOMChanges();
-                }, 300);
+                }, 500); // Slightly longer delay
                 obs.disconnect();
             }
         });
@@ -555,8 +558,16 @@
             subtree: true
         });
 
-        // Disconnect after 5 seconds to prevent infinite observation
-        setTimeout(() => observer.disconnect(), 5000);
+        // Disconnect after 10 seconds to prevent infinite observation
+        setTimeout(() => {
+            observer.disconnect();
+            // Fallback: if observer didn't catch it, try processing anyway
+            if (shouldRunOnCurrentPage()) {
+                debugLog('Fallback processing after observer timeout');
+                processExistingThumbnails();
+                observeDOMChanges();
+            }
+        }, 10000);
     }
 
     function convertLiveUrlToWatchUrl(url) {
@@ -609,14 +620,17 @@
         const currentUrl = event.detail?.url || window.location.href;
         debugLog('Navigation finished, URL:', currentUrl);
 
-        convertCurrentUrl(); // Add this line
+        convertCurrentUrl();
         processingQueue.clear();
 
         if (currentUrl.includes('/feed/channels')) {
             fetchSubscribedChannels();
         } else if (shouldRunOnCurrentPage()) {
-            observeFirstVideo(); // Add this line
-            processPageWithRetry(5, 300);
+            // Use a more robust approach with multiple retry attempts
+            setTimeout(() => {
+                debugLog('Starting post-navigation processing...');
+                processPageWithRetry(8, 500); // Increased retries and delay
+            }, 1000); // Wait longer before starting
         } else {
             debugLog('Navigated to a non-target page, script inactive');
             if (currentObserver) {
@@ -626,14 +640,15 @@
         }
     });
 
-    // Also listen for the start of navigation to prepare
-    document.addEventListener('yt-navigate-start', () => {
-        debugLog('Navigation starting...');
-        // Optionally disconnect observer during navigation
-        if (currentObserver) {
-            currentObserver.disconnect();
-        }
-    });
+// Also listen for the start of navigation to prepare
+document.addEventListener('yt-navigate-start', () => {
+    debugLog('Navigation starting...');
+    // Disconnect observer during navigation
+    if (currentObserver) {
+        currentObserver.disconnect();
+        currentObserver = null;
+    }
+});
 
     // Additional observer for specific YouTube content updates
     const ytAppObserver = new MutationObserver((mutations) => {
