@@ -83,10 +83,16 @@
     }
 
     function getVideoId(thumbnailElement) {
-        const videoLink = thumbnailElement.querySelector('a[href^="/watch?v="]');
+        // Try the original selector first
+        let videoLink = thumbnailElement.querySelector('a[href^="/watch?v="]');
+
+        // If not found, try the new layout structure
+        if (!videoLink) {
+            videoLink = thumbnailElement.querySelector('a[href*="/watch?v="]');
+        }
+
         if (videoLink) {
             const href = videoLink.getAttribute('href');
-            // Extract the video ID using a regular expression
             const match = href.match(/[?&]v=([^&]+)/);
             return match ? match[1] : null;
         }
@@ -111,69 +117,37 @@
     }
 
     function isNormalVideo(element) {
+        // New check for the new layout element <yt-lockup-view-model>
         if (element.tagName.toUpperCase() === 'YT-LOCKUP-VIEW-MODEL') {
-            return { isNormal: false, reason: 'yt-lockup-view-model (Mix/Collection) detected' };
+            const contentType = element.getAttribute('ytb-content-type');
+            // This element is used for regular videos on the watch page sidebar
+            // and for mixes/playlists on the homepage. We only want to hide the playlists.
+            if (contentType === 'playlist' || contentType === 'channel') {
+                return { isNormal: false, reason: `yt-lockup-view-model is a ${contentType}` };
+            }
+            // If it's a 'video', let it pass for further checks.
         }
 
-        // Check current URL
-        const isHomePage = window.location.href === 'https://www.youtube.com/' ||
-              window.location.href === 'https://www.youtube.com';
-        const isWatchPage = window.location.href.includes('/watch?v=');
-
-        // Different handling for different page types
-        if (isWatchPage) {
-            // On watch pages, compact video renderers are the normal recommended videos
-            const isCompactVideo = element.tagName === 'YTD-COMPACT-VIDEO-RENDERER';
-            const isCompactPlaylist = element.tagName === 'YTD-COMPACT-PLAYLIST-RENDERER';
-
-            // Hide playlists but allow compact videos
-            if (isCompactPlaylist) {
-                return { isNormal: false, reason: 'Playlist element detected' };
-            }
-
-            // Check for live streams and hide them
-            const hasLiveBadge = element.querySelector('[aria-label="LIVE"], .badge-style-type-live-now-alternate');
-            const hasWatchingCount = element.textContent.match(/\d+\s+watching/);
-            if (hasLiveBadge || hasWatchingCount) {
-                return { isNormal: false, reason: 'Live stream detected' };
-            }
-
-            // Check for watched videos (progress bar)
-            const hasProgressBar = element.querySelector('#progress, [class*="progress" i]');
-            if (hasProgressBar) {
-                return { isNormal: false, reason: 'Already watched' };
-            }
-
-            // For watch pages, don't check duration - compact videos don't always show duration the same way
-            return { isNormal: true, reason: 'Normal video (watch page)' };
-        } else if (isHomePage) {
-            // Original homepage logic
-            const isRichItem = element.tagName === 'YTD-RICH-ITEM-RENDERER';
-            const isCompactVideo = element.tagName === 'YTD-COMPACT-VIDEO-RENDERER';
-            const isCompactPlaylist = element.tagName === 'YTD-COMPACT-PLAYLIST-RENDERER';
-            const isItemSectionPlaylist = element.tagName === 'YTD-ITEM-SECTION-RENDERER';
-
-            if (isCompactPlaylist || isItemSectionPlaylist) {
-                return { isNormal: false, reason: 'Playlist element detected' };
-            }
-
-            // Duration check only for homepage
-            const elementText = element.textContent;
-            const durationMatch = elementText.match(/\d+:\d+/);
-            if (!durationMatch) {
-                return { isNormal: false, reason: 'No duration found' };
-            }
-
-            const hasProgressBar = element.querySelector('#progress, [class*="progress" i]');
-            if (hasProgressBar) {
-                return { isNormal: false, reason: 'Already watched' };
-            }
-
-            return { isNormal: true, reason: 'Normal video (homepage)' };
+        // Your existing checks are still valuable for other element types
+        if (element.tagName.toUpperCase() === 'YTD-COMPACT-PLAYLIST-RENDERER' ||
+            element.tagName.toUpperCase() === 'YTD-ITEM-SECTION-RENDERER') {
+            return { isNormal: false, reason: 'Playlist element detected' };
         }
 
-        // For other pages, default to normal
-        return { isNormal: true, reason: 'Default normal' };
+        // Check for live streams
+        const hasLiveBadge = element.querySelector('[aria-label="LIVE"], .badge-style-type-live-now-alternate, badge-shape.badge-shape-wiz--live');
+        const isLiveText = element.querySelector('.yt-badge-shape-wiz__text[aria-label="LIVE"]');
+        if (hasLiveBadge || isLiveText) {
+            return { isNormal: false, reason: 'Live stream detected' };
+        }
+
+        // Check for watched videos (progress bar)
+        const hasProgressBar = element.querySelector('#progress, [class*="progress" i]');
+        if (hasProgressBar) {
+            return { isNormal: false, reason: 'Already watched' };
+        }
+
+        return { isNormal: true, reason: 'Normal video' };
     }
 
     function hideElement(element, reason) {
@@ -185,8 +159,20 @@
                 element.style.display = 'none';
                 element.setAttribute('data-hide-reason', reason);
             } else {
-                // On other pages (like watch page), still remove completely
-                element.remove();
+                // On other pages, try multiple approaches
+                element.style.display = 'none';
+                element.style.visibility = 'hidden';
+                element.style.opacity = '0';
+                element.style.height = '0';
+                element.style.overflow = 'hidden';
+                element.setAttribute('data-hide-reason', reason);
+
+                // Try to remove after a short delay
+                setTimeout(() => {
+                    if (element.parentNode) {
+                        element.remove();
+                    }
+                }, 100);
             }
         }
     }
@@ -217,154 +203,104 @@
     }
 
     function processThumbnail(thumbnailElement) {
-        if (!shouldRunOnCurrentPage()) {
-            debugLog('Not on a target page, skipping processing');
+        if (!shouldRunOnCurrentPage() || !shouldProcessElement(thumbnailElement)) {
             return;
         }
 
-        if (!shouldProcessElement(thumbnailElement)) {
-            debugLog('Element type not suitable for current page, skipping');
-            return;
-        }
+        let parentElement = thumbnailElement.matches(VIDEO_CONTAINER_SELECTORS) ?
+            thumbnailElement :
+        thumbnailElement.closest(VIDEO_CONTAINER_SELECTORS);
 
-        // Look for the parent element to ensure we are processing a valid video/playlist thumbnail
-        const parentElement = thumbnailElement.closest(VIDEO_CONTAINER_SELECTORS);
-        if (!parentElement) {
-            debugLog('No parent element found, skipping');
-            return;
-        }
+        if (!parentElement) return;
 
-        // Get video title first for logging purposes
-        const videoTitleElement = parentElement.querySelector('#video-title, yt-formatted-string#video-title');
-        let videoTitle = 'Unknown Title';
-        if (videoTitleElement) {
-            videoTitle = videoTitleElement.textContent.trim();
-        }
+        // --- NEW SELECTORS FOR NEW LAYOUT ---
+        const isNewLayout = parentElement.matches('yt-lockup-view-model');
+        const oldLayoutTitleEl = parentElement.querySelector('#video-title, yt-formatted-string#video-title');
+        const newLayoutTitleEl = parentElement.querySelector('h3.yt-lockup-metadata-view-model-wiz__heading-reset span.yt-core-attributed-string');
+
+        const videoTitleElement = newLayoutTitleEl || oldLayoutTitleEl;
+        const videoTitle = videoTitleElement ? videoTitleElement.textContent.trim() : 'Unknown Title';
+
         debugLog(`%cProcessing: "${videoTitle}"`, 'font-weight: bold');
 
-        // Check if the element represents a normal video - FIRST CHECK
         const normalVideoCheck = isNormalVideo(parentElement);
         if (!normalVideoCheck.isNormal) {
-            logHiding(`${normalVideoCheck.reason}`, videoTitle);
+            logHiding(normalVideoCheck.reason, videoTitle);
             hideElement(parentElement, `Not a normal video: ${normalVideoCheck.reason}`);
-            return; // EARLY RETURN - prevents further processing
+            return;
         }
 
-        // Check for filtered title terms - SECOND CHECK
-        if (videoTitleElement) {
-            for (const term of FILTERED_TITLE_TERMS) {
-                const regex = new RegExp(`\\b${term}(?:'s|s)?\\b`, 'i');
-                if (regex.test(videoTitle)) {
-                    logHiding(`Found "${term}" in title`, videoTitle);
-                    hideElement(parentElement, `Filtered title term: ${term}`);
-                    return; // EARLY RETURN
-                }
+        for (const term of FILTERED_TITLE_TERMS) {
+            if (new RegExp(`\\b${term}(?:'s|s)?\\b`, 'i').test(videoTitle)) {
+                logHiding(`Found "${term}" in title`, videoTitle);
+                hideElement(parentElement, `Filtered title term: ${term}`);
+                return;
             }
         }
 
-        // Get video ID and channel name
         const videoId = getVideoId(parentElement);
-        const channelName = getChannelName(parentElement);
+        let channelName;
+        let metadataElements;
+
+        if (isNewLayout) {
+            // Find channel name, views, and date in the new layout
+            const metadataRows = parentElement.querySelectorAll('.yt-content-metadata-view-model-wiz__metadata-text');
+            metadataElements = Array.from(metadataRows);
+            // The first metadata row is usually the channel name
+            channelName = metadataRows.length > 0 ? metadataRows[0].textContent.trim() : null;
+        } else {
+            // Fallback to old layout logic
+            channelName = getChannelName(parentElement);
+            metadataElements = parentElement.querySelectorAll('.inline-metadata-item.style-scope.ytd-video-meta-block');
+        }
+
         if (!videoId || !channelName) {
             logHiding('Missing video ID or channel name', videoTitle);
             hideElement(parentElement, 'Missing video ID or channel name');
-            return; // EARLY RETURN
+            return;
         }
 
-        // Check for filtered channel name terms - THIRD CHECK
         for (const term of FILTERED_CHANNEL_TERMS) {
-            const regex = new RegExp(`\\b${term}(?:'s|s)?\\b`, 'i');
-            if (regex.test(channelName)) {
+            if (new RegExp(`\\b${term}(?:'s|s)?\\b`, 'i').test(channelName)) {
                 logHiding(`Found "${term}" in channel name: "${channelName}"`, videoTitle);
                 hideElement(parentElement, `Filtered channel term: ${term}`);
-                return; // EARLY RETURN
+                return;
             }
         }
 
-        // Retrieve metadata elements (date and views share the same class)
-        const metadataElements = parentElement.querySelectorAll('.inline-metadata-item.style-scope.ytd-video-meta-block');
-        let metadataDate = null;
-        let isStreamed = false;
-
-        // Loop through metadata elements to find one matching a date or streamed format
-        metadataElements.forEach((element) => {
-            const text = element.textContent.trim();
-            if (text.match(/^(Streamed\s+)?\d+\s+(second|minute|hour|day|week|month|year)s?\s+ago$/)) {
-                metadataDate = text;
-                isStreamed = text.startsWith('Streamed');
-            }
-        });
-
-        // Skip if no valid date metadata is found
-        if (!metadataDate) {
-            logHiding('No valid date metadata found', videoTitle);
-            hideElement(parentElement, 'No valid date metadata found');
-            return; // EARLY RETURN
-        }
-
-        // Parse the publication date from the metadata
-        const videoDate = parseDateFromMetadata(metadataDate);
-        const startDate = new Date('2004-02-15'); // Set your desired start date
-        const endDate = new Date(); // Set endDate to today's date
-
-        // Check if the video falls within the specified date range
-        if (!videoDate || !isWithinDateRange(videoDate, startDate, endDate)) {
-            logHiding(`Outside date range: ${metadataDate}`, videoTitle);
-            hideElement(parentElement, `Outside date range: ${metadataDate}`);
-            return; // EARLY RETURN
-        }
-
-        // Optionally, skip streamed videos (if desired)
-        if (isStreamed) {
-            logHiding(`Streamed video: ${metadataDate}`, videoTitle);
-            hideElement(parentElement, `Streamed video: ${metadataDate}`);
-            return; // EARLY RETURN
-        }
-
-        // Extract and evaluate view count
         let viewCountText = null;
-        metadataElements.forEach((element) => {
-            const text = element.textContent.trim();
-            const lowerText = text.toLowerCase();
-            // Check for date/streamed info
-            if (lowerText.match(/^(streamed\s+)?\d+\s+(second|minute|hour|day|week|month|year)s?\s+ago$/)) {
-                metadataDate = text;
-                isStreamed = lowerText.startsWith('streamed');
-            }
-            // Check for view count (modified condition here!)
-            if (lowerText.includes('view')) { // Check for "view" (singular)
+        let metadataDate = null;
+        metadataElements.forEach(element => {
+            const text = element.textContent.trim().toLowerCase();
+            if (text.includes('view')) {
                 viewCountText = text;
+            } else if (text.match(/\d+\s+(second|minute|hour|day|week|month|year)s?\s+ago$/)) {
+                metadataDate = text;
             }
         });
 
-        if (!viewCountText) {
-            logHiding('No view count metadata found', videoTitle);
-            hideElement(parentElement, 'No view count metadata found');
-            return; // EARLY RETURN
+        if (!viewCountText || !metadataDate) {
+            logHiding('No view count or date metadata found', videoTitle);
+            hideElement(parentElement, 'No view count or date metadata found');
+            return;
         }
 
         const numericViews = parseViewCount(viewCountText);
-        const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-        // Comprehensive logging for all video details
-        debugLog(`   Channel: ${channelName}`);
-        debugLog(`   Views: ${viewCountText} (${numericViews.toLocaleString()} views)`);
-        debugLog(`   Date: ${metadataDate}`);
+        debugLog(`   Channel: ${channelName}, Views: ${viewCountText} (${numericViews.toLocaleString()}), Date: ${metadataDate}`);
 
         if (numericViews < MINIMUM_VIEWS) {
             logHiding(`Below minimum views: ${viewCountText}`, videoTitle);
             hideElement(parentElement, `Below minimum views: ${viewCountText}`);
-            return; // EARLY RETURN
+            return;
         }
 
-        // Hide the video if it belongs to a subscribed channel
+        const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         if (subscribedChannels.has(normalizedChannelName)) {
             logHiding(`Subscribed channel: "${channelName}"`, videoTitle);
             hideElement(parentElement, 'Subscribed');
-            return; // EARLY RETURN
+            return;
         }
 
-        // Handle view count threshold
         let viewCount = GM_getValue(videoId, 0) + 1;
         GM_setValue(videoId, viewCount);
         debugLog(`View count: ${viewCount}/${Threshold}`);
@@ -372,7 +308,6 @@
         if (viewCount > Threshold) {
             logHiding(`Over threshold (${viewCount}/${Threshold})`, videoTitle);
             hideElement(parentElement, 'Over threshold');
-            return; // EARLY RETURN
         } else {
             logShowing(`Below threshold (${viewCount}/${Threshold})`, videoTitle);
             showElement(parentElement);
