@@ -230,8 +230,12 @@
             return;
         }
 
+        // Normalize the video title for comparison
+        const normalizedTitle = videoTitle.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
         for (const term of FILTERED_TITLE_TERMS) {
-            if (new RegExp(`\\b${term}(?:'s|s)?\\b`, 'i').test(videoTitle)) {
+            const normalizedTerm = term.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            if (new RegExp(`\\b${normalizedTerm}(?:'s|s)?\\b`, 'i').test(normalizedTitle)) {
                 logHiding(`Found "${term}" in title`, videoTitle);
                 hideElement(parentElement, `Filtered title term: ${term}`);
                 return;
