@@ -17,7 +17,6 @@
     const MINIMUM_VIEWS = 0; // Add a minimum views threshold here
     let subscribedChannels = new Set();
     let currentObserver = null; // Track the current observer
-    let processingQueue = new Set(); // Prevent duplicate processing
     const FILTERED_TITLE_TERMS = ['fsfzzerz', 'sdfzertzerzer']; // Add words to filter titles that have those
     const FILTERED_CHANNEL_TERMS = ['qfrtzeerezt', 'truytuhfhgr']; // Add words to filter channel names that have those
 
@@ -33,9 +32,8 @@
 
     // Colored logging functions
     function logHiding(reason, title) {
-        const isHomePage = window.location.pathname === '/';
-        const action = isHomePage ? 'HIDING' : 'DELETING';
-        debugLog(`%c❌ ${action} - ${reason}: "${title}"`, 'color: #C03030; font-weight: bold;');
+        // This function is now more accurate, as we are always hiding, not deleting.
+        debugLog(`%c❌ HIDING - ${reason}: "${title}"`, 'color: #C03030; font-weight: bold;');
     }
 
     function logShowing(reason, title) {
@@ -51,61 +49,133 @@
 
     function fetchSubscribedChannels() {
         function updateSubscribedChannels() {
-            const channelElements = document.querySelectorAll('yt-formatted-string#text.style-scope.ytd-channel-name');
-            let newSubscribedChannels = [];
-            channelElements.forEach(element => {
-                const channelName = element.textContent.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                if (!newSubscribedChannels.includes(channelName)) {
-                    newSubscribedChannels.push(channelName);
+            debugLog('Starting to fetch subscribed channels by scrolling...');
+            let lastHeight = 0;
+            let newSubscribedNames = new Set();
+            let consecutiveStops = 0;
+            let scrollCount = 0;
+            const maxStops = 5;
+            const maxScrolls = 50;
+
+            const scrollInterval = setInterval(() => {
+                scrollCount++;
+
+                window.scrollTo(0, document.documentElement.scrollHeight);
+                const currentHeight = document.documentElement.scrollHeight;
+
+                // Updated selector to get channel names from ytd-channel-name elements
+                const channelNameElements = document.querySelectorAll('ytd-channel-name yt-formatted-string#text');
+                debugLog(`Scroll ${scrollCount}: Found ${channelNameElements.length} channel names, height: ${currentHeight}`);
+
+                channelNameElements.forEach(nameElement => {
+                    const channelName = nameElement.textContent.trim();
+                    if (channelName && channelName.length > 0) {
+                        // Normalize the name for consistent storage
+                        const normalizedName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                        if (!newSubscribedNames.has(normalizedName)) {
+                            newSubscribedNames.add(normalizedName);
+                            debugLog(`Added channel name: ${channelName} (normalized: ${normalizedName})`);
+                        }
+                    }
+                });
+
+                if (currentHeight === lastHeight) {
+                    consecutiveStops++;
+                    if (consecutiveStops >= maxStops || scrollCount >= maxScrolls) {
+                        clearInterval(scrollInterval);
+                        debugLog('Finished scrolling. Final collection...');
+
+                        setTimeout(() => {
+                            const finalChannelNameElements = document.querySelectorAll('ytd-channel-name yt-formatted-string#text');
+                            finalChannelNameElements.forEach(nameElement => {
+                                const channelName = nameElement.textContent.trim();
+                                if (channelName && channelName.length > 0) {
+                                    const normalizedName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                                    newSubscribedNames.add(normalizedName);
+                                }
+                            });
+
+                            if (newSubscribedNames.size > 0) {
+                                GM_setValue('subscribedChannelNames', JSON.stringify(Array.from(newSubscribedNames)));
+                                subscribedChannels = newSubscribedNames;
+                                debugLog('Successfully saved subscribed channel names:', Array.from(newSubscribedNames));
+                                debugLog('Total subscribed channel names found:', subscribedChannels.size);
+
+                                // Clean up old storage
+                                GM_setValue('subscribedChannelHandles', JSON.stringify([]));
+                                GM_setValue('subscribedChannels', JSON.stringify([]));
+                            } else {
+                                debugLog('Could not find any channel names after scrolling.');
+                            }
+                        }, 1000);
+                    }
+                } else {
+                    lastHeight = currentHeight;
+                    consecutiveStops = 0;
                 }
-            });
-            GM_setValue('subscribedChannels', JSON.stringify(newSubscribedChannels));
-            subscribedChannels = new Set(newSubscribedChannels);
-            debugLog('Fetched subscribed channels:', Array.from(subscribedChannels));
-        }
 
-        function waitForChannels() {
-            const observer = new MutationObserver((mutations, obs) => {
-                const channelList = document.querySelector('#items.style-scope.ytd-section-list-renderer');
-                if (channelList) {
-                    updateSubscribedChannels();
-                    obs.disconnect();
+                if (scrollCount >= maxScrolls) {
+                    clearInterval(scrollInterval);
+                    debugLog('Reached maximum scroll limit');
                 }
-            });
-            observer.observe(document.body, {
-                childList: true,
-                subtree: true
-            });
+            }, 2000);
         }
 
-        waitForChannels();
-        setInterval(updateSubscribedChannels, 6000);
-    }
+        // Rest of the observer code remains the same...
+        const observer = new MutationObserver((mutations, obs) => {
+            const gridContainer = document.querySelector('ytd-expanded-shelf-contents-renderer #contents');
+            const listContainer = document.querySelector('ytd-section-list-renderer #items');
+            const channelRenderers = document.querySelectorAll('ytd-channel-renderer');
 
-    function getVideoId(thumbnailElement) {
-        // Try the original selector first
-        let videoLink = thumbnailElement.querySelector('a[href^="/watch?v="]');
+            if ((gridContainer || listContainer) && channelRenderers.length > 0) {
+                debugLog('Subscription page content detected with channels. Starting fetch...');
+                obs.disconnect();
+                setTimeout(updateSubscribedChannels, 2000);
+            } else if (channelRenderers.length > 5) {
+                debugLog('Multiple channel renderers detected. Starting fetch...');
+                obs.disconnect();
+                setTimeout(updateSubscribedChannels, 1000);
+            }
+        });
 
-        // If not found, try the new layout structure
-        if (!videoLink) {
-            videoLink = thumbnailElement.querySelector('a[href*="/watch?v="]');
-        }
+        observer.observe(document.body, { childList: true, subtree: true });
 
-        if (videoLink) {
-            const href = videoLink.getAttribute('href');
-            const match = href.match(/[?&]v=([^&]+)/);
-            return match ? match[1] : null;
-        }
-        return null;
+        setTimeout(() => {
+            observer.disconnect();
+            const channelRenderers = document.querySelectorAll('ytd-channel-renderer');
+            if (channelRenderers.length > 0) {
+                debugLog('Timeout reached, but found channels. Starting fetch anyway...');
+                updateSubscribedChannels();
+            } else {
+                debugLog('Timeout reached and no channels found. Make sure you are on the subscriptions page.');
+            }
+        }, 10000);
     }
 
     function getChannelName(thumbnailElement) {
         if (window.location.href.includes("watch?v=")) {
-            // On an individual video page
+            // On an individual video page - try multiple selectors
+
+            // First try: look for channel name in metadata
+            const channelNameSpan = thumbnailElement.querySelector('.yt-content-metadata-view-model-wiz__metadata-row span.yt-core-attributed-string');
+            if (channelNameSpan && channelNameSpan.textContent && channelNameSpan.textContent.trim().length > 0) {
+                return channelNameSpan.textContent.trim();
+            }
+
+            // Fallback: try other possible selectors
             const channelNameElement = thumbnailElement.querySelector('ytd-channel-name yt-formatted-string#text');
             return channelNameElement ? channelNameElement.textContent.trim() : null;
-        } else if (window.location.href === "https://www.youtube.com/") {
-            // On the youtube home page
+
+        } else if (window.location.href === "https://www.youtube.com/" || window.location.pathname === '/') {
+            // On the youtube home page - updated for new layout
+
+            // First try the new layout structure
+            const newLayoutChannelLink = thumbnailElement.querySelector('a[href^="/@"]');
+            if (newLayoutChannelLink && newLayoutChannelLink.textContent && newLayoutChannelLink.textContent.trim().length > 0) {
+                return newLayoutChannelLink.textContent.trim();
+            }
+
+            // Fallback to old layout
             const possibleChannelLinks = thumbnailElement.querySelectorAll('a[href^="/@"]');
             for (const link of possibleChannelLinks) {
                 if (link.textContent && link.textContent.trim().length > 0) {
@@ -152,35 +222,22 @@
 
     function hideElement(element, reason) {
         if (element) {
-            const isHomePage = window.location.pathname === '/';
+            // Set the attribute so our CSS rule and monitor can find it.
+            element.setAttribute('data-hide-reason', reason);
 
-            if (isHomePage) {
-                // On homepage, hide instead of delete
-                element.style.display = 'none';
-                element.setAttribute('data-hide-reason', reason);
-            } else {
-                // On other pages, try multiple approaches
-                element.style.display = 'none';
-                element.style.visibility = 'hidden';
-                element.style.opacity = '0';
-                element.style.height = '0';
-                element.style.overflow = 'hidden';
-                element.setAttribute('data-hide-reason', reason);
-
-                // Try to remove after a short delay
-                setTimeout(() => {
-                    if (element.parentNode) {
-                        element.remove();
-                    }
-                }, 100);
-            }
+            // Also apply a direct, forceful inline style to win potential race conditions.
+            // Using !important here makes it very difficult for other scripts to override.
+            element.style.display = 'none !important';
         }
     }
 
     function showElement(element) {
         if (element) {
-            element.style.display = '';
+            // Remove the attribute that our CSS rule targets.
             element.removeAttribute('data-hide-reason');
+
+            // Remove the inline style to allow the element to return to its default display state.
+            element.style.display = '';
         }
     }
 
@@ -189,9 +246,10 @@
         const isWatchPage = window.location.pathname === '/watch';
 
         if (isHomePage) {
-            // On homepage, process rich items and some compact videos
+            // On homepage, process rich items, compact videos, and the new yt-lockup-view-model
             return element.tagName === 'YTD-RICH-ITEM-RENDERER' ||
-                element.tagName === 'YTD-COMPACT-VIDEO-RENDERER';
+                element.tagName === 'YTD-COMPACT-VIDEO-RENDERER' ||
+                element.tagName === 'YT-LOCKUP-VIEW-MODEL';
         } else if (isWatchPage) {
             // On watch pages, only process compact video renderers (sidebar recommendations)
             const tagName = element.tagName.toUpperCase(); // Normalize to uppercase
@@ -202,6 +260,31 @@
         return false;
     }
 
+    /**
+     * Extracts the YouTube video ID from a link within the given element.
+     * @param {HTMLElement} element The container element for a video.
+     * @returns {string|null} The video ID or null if not found.
+     */
+    function getVideoId(element) {
+        if (!element) return null;
+
+        const link = element.querySelector('a[href*="/watch?v="]');
+        if (link && link.href) {
+            try {
+                const url = new URL(link.href);
+                return url.searchParams.get('v');
+            } catch (e) {
+                // Fallback for relative URLs like /watch?v=...
+                const match = link.href.match(/[?&]v=([^&]+)/);
+                if (match && match[1]) {
+                    return match[1];
+                }
+            }
+        }
+        return null;
+    }
+
+    // REPLACE your existing processThumbnail function with this one
     function processThumbnail(thumbnailElement) {
         if (!shouldRunOnCurrentPage() || !shouldProcessElement(thumbnailElement)) {
             return;
@@ -213,13 +296,25 @@
 
         if (!parentElement) return;
 
-        // --- NEW SELECTORS FOR NEW LAYOUT ---
-        const isNewLayout = parentElement.matches('yt-lockup-view-model');
-        const oldLayoutTitleEl = parentElement.querySelector('#video-title, yt-formatted-string#video-title');
-        const newLayoutTitleEl = parentElement.querySelector('h3.yt-lockup-metadata-view-model-wiz__heading-reset span.yt-core-attributed-string');
+        // --- KEY CHANGE START ---
+        // If the element already has our hide attribute, it has been successfully
+        // processed. We can safely ignore it to prevent redundant checks and solve
+        // the re-rendering issue.
+        if (parentElement.hasAttribute('data-hide-reason')) {
+            return;
+        }
+        // --- KEY CHANGE END ---
 
-        const videoTitleElement = newLayoutTitleEl || oldLayoutTitleEl;
+        const videoId = getVideoId(parentElement);
+
+        // Updated selector for video title in yt-lockup-view-model
+        const videoTitleElement = parentElement.querySelector('h3.yt-lockup-metadata-view-model-wiz__heading-reset span.yt-core-attributed-string');
         const videoTitle = videoTitleElement ? videoTitleElement.textContent.trim() : 'Unknown Title';
+
+        if (videoTitle === 'Unknown Title') {
+            hideElement(parentElement, 'Is an Ad or placeholder element');
+            return;
+        }
 
         debugLog(`%cProcessing: "${videoTitle}"`, 'font-weight: bold');
 
@@ -230,9 +325,7 @@
             return;
         }
 
-        // Normalize the video title for comparison
         const normalizedTitle = videoTitle.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
         for (const term of FILTERED_TITLE_TERMS) {
             const normalizedTerm = term.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
             if (new RegExp(`\\b${normalizedTerm}(?:'s|s)?\\b`, 'i').test(normalizedTitle)) {
@@ -242,20 +335,26 @@
             }
         }
 
-        const videoId = getVideoId(parentElement);
-        let channelName;
-        let metadataElements;
+        // Simplified channel name extraction - names only
+        let channelName = null;
 
-        if (isNewLayout) {
-            // Find channel name, views, and date in the new layout
-            const metadataRows = parentElement.querySelectorAll('.yt-content-metadata-view-model-wiz__metadata-text');
-            metadataElements = Array.from(metadataRows);
-            // The first metadata row is usually the channel name
-            channelName = metadataRows.length > 0 ? metadataRows[0].textContent.trim() : null;
-        } else {
-            // Fallback to old layout logic
+        // For yt-lockup-view-model elements
+        const metadataRows = parentElement.querySelectorAll('.yt-content-metadata-view-model-wiz__metadata-row');
+        for (const row of metadataRows) {
+            const channelSpan = row.querySelector('span.yt-core-attributed-string');
+            if (channelSpan) {
+                const text = channelSpan.textContent.trim();
+                // Check if this looks like a channel name (not views or time)
+                if (!text.includes('view') && !text.includes('ago') && !text.includes('•') && text.length > 0) {
+                    channelName = text;
+                    break;
+                }
+            }
+        }
+
+        // Fallback for other video container types
+        if (!channelName) {
             channelName = getChannelName(parentElement);
-            metadataElements = parentElement.querySelectorAll('.inline-metadata-item.style-scope.ytd-video-meta-block');
         }
 
         if (!videoId || !channelName) {
@@ -263,6 +362,9 @@
             hideElement(parentElement, 'Missing video ID or channel name');
             return;
         }
+
+        // Log what we found for debugging
+        debugLog(`   Found - Channel: "${channelName}", Video ID: "${videoId}"`);
 
         for (const term of FILTERED_CHANNEL_TERMS) {
             if (new RegExp(`\\b${term}(?:'s|s)?\\b`, 'i').test(channelName)) {
@@ -272,16 +374,31 @@
             }
         }
 
+        // Check against subscribed channels (names only)
+        const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const isSubscribed = subscribedChannels.has(normalizedChannelName);
+
+        if (isSubscribed) {
+            logHiding(`Subscribed channel: "${channelName}"`, videoTitle);
+            hideElement(parentElement, `Subscribed channel: ${channelName}`);
+            return;
+        }
+
+        // Extract view count and date metadata
         let viewCountText = null;
         let metadataDate = null;
-        metadataElements.forEach(element => {
-            const text = element.textContent.trim().toLowerCase();
-            if (text.includes('view')) {
-                viewCountText = text;
-            } else if (text.match(/\d+\s+(second|minute|hour|day|week|month|year)s?\s+ago$/)) {
-                metadataDate = text;
+
+        for (const row of metadataRows) {
+            const spans = row.querySelectorAll('span.yt-core-attributed-string');
+            for (const span of spans) {
+                const text = span.textContent.trim().toLowerCase();
+                if (text.includes('view') && !viewCountText) {
+                    viewCountText = text;
+                } else if (text.match(/\d+\s+(second|minute|hour|day|week|month|year)s?\s+ago$/) && !metadataDate) {
+                    metadataDate = text;
+                }
             }
-        });
+        }
 
         if (!viewCountText || !metadataDate) {
             logHiding('No view count or date metadata found', videoTitle);
@@ -295,13 +412,6 @@
         if (numericViews < MINIMUM_VIEWS) {
             logHiding(`Below minimum views: ${viewCountText}`, videoTitle);
             hideElement(parentElement, `Below minimum views: ${viewCountText}`);
-            return;
-        }
-
-        const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        if (subscribedChannels.has(normalizedChannelName)) {
-            logHiding(`Subscribed channel: "${channelName}"`, videoTitle);
-            hideElement(parentElement, 'Subscribed');
             return;
         }
 
@@ -382,12 +492,12 @@
     }
 
     function loadStoredSubscribedChannels() {
-        const storedChannels = GM_getValue('subscribedChannels');
-        if (storedChannels) {
-            subscribedChannels = new Set(JSON.parse(storedChannels));
-            debugLog('Loaded stored subscribed channels:', Array.from(subscribedChannels));
+        const storedNames = GM_getValue('subscribedChannelNames');
+        if (storedNames && storedNames.length > 2) {
+            subscribedChannels = new Set(JSON.parse(storedNames));
+            debugLog('Loaded stored subscribed channel names:', Array.from(subscribedChannels));
         } else {
-            debugLog('No stored subscribed channels found');
+            debugLog('No stored subscribed channel names found. Please visit your subscriptions page (youtube.com/feed/channels) to generate the list.');
         }
     }
 
@@ -441,7 +551,6 @@
         return 0; // Default if no match found
     }
 
-    // Add this after your constants but before the functions
     function injectCSS() {
         const style = document.createElement('style');
         style.textContent = `
@@ -450,6 +559,7 @@
         visibility: hidden !important;
         opacity: 0 !important;
         height: 0 !important;
+        max-height: 0 !important;
         width: 0 !important;
         margin: 0 !important;
         padding: 0 !important;
@@ -457,6 +567,15 @@
         overflow: hidden !important;
         position: absolute !important;
         left: -9999px !important;
+        top: -9999px !important;
+        pointer-events: none !important;
+    }
+
+    /* Specific targeting for yt-lockup-view-model elements */
+    yt-lockup-view-model[data-hide-reason] {
+        display: none !important;
+        height: 0 !important;
+        min-height: 0 !important;
     }
 `;
         document.head.appendChild(style);
@@ -466,10 +585,14 @@
         setInterval(() => {
             const hiddenElements = document.querySelectorAll('[data-hide-reason]');
             hiddenElements.forEach(element => {
-                if (element.style.display !== 'none') {
+                // CORRECTED: Use getComputedStyle to check the final, actual display property.
+                // This will correctly see that the element is hidden by our CSS rule.
+                if (window.getComputedStyle(element).display !== 'none') {
                     const reason = element.getAttribute('data-hide-reason');
-                    hideElement(element, reason);
-                    debugLog(`Re-hiding element that reappeared: ${reason}`);
+                    // The element has reappeared despite the attribute. Log it and re-hide.
+                    // We don't need to call hideElement again since the attribute is already there.
+                    // The browser should re-apply the CSS rule.
+                    debugLog(`Force re-hiding element that reappeared: ${reason}`);
                 }
             });
         }, 1000); // Check every second
@@ -554,13 +677,13 @@
         }
     }
 
-    // Enhanced navigation handler
+    // REPLACE your existing 'yt-navigate-finish' listener with this one
     document.addEventListener('yt-navigate-finish', (event) => {
         const currentUrl = event.detail?.url || window.location.href;
         debugLog('Navigation finished, URL:', currentUrl);
 
         convertCurrentUrl();
-        processingQueue.clear();
+        // The processingQueue.clear() line has been removed.
 
         if (currentUrl.includes('/feed/channels')) {
             fetchSubscribedChannels();
@@ -579,15 +702,15 @@
         }
     });
 
-// Also listen for the start of navigation to prepare
-document.addEventListener('yt-navigate-start', () => {
-    debugLog('Navigation starting...');
-    // Disconnect observer during navigation
-    if (currentObserver) {
-        currentObserver.disconnect();
-        currentObserver = null;
-    }
-});
+    // Also listen for the start of navigation to prepare
+    document.addEventListener('yt-navigate-start', () => {
+        debugLog('Navigation starting...');
+        // Disconnect observer during navigation
+        if (currentObserver) {
+            currentObserver.disconnect();
+            currentObserver = null;
+        }
+    });
 
     // Additional observer for specific YouTube content updates
     const ytAppObserver = new MutationObserver((mutations) => {
