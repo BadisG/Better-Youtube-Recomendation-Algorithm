@@ -260,11 +260,6 @@
         return false;
     }
 
-    /**
-     * Extracts the YouTube video ID from a link within the given element.
-     * @param {HTMLElement} element The container element for a video.
-     * @returns {string|null} The video ID or null if not found.
-     */
     function getVideoId(element) {
         if (!element) return null;
 
@@ -284,7 +279,10 @@
         return null;
     }
 
-    // REPLACE your existing processThumbnail function with this one
+    function escapeRegExp(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+    }
+
     function processThumbnail(thumbnailElement) {
         if (!shouldRunOnCurrentPage() || !shouldProcessElement(thumbnailElement)) {
             return;
@@ -296,18 +294,12 @@
 
         if (!parentElement) return;
 
-        // --- KEY CHANGE START ---
-        // If the element already has our hide attribute, it has been successfully
-        // processed. We can safely ignore it to prevent redundant checks and solve
-        // the re-rendering issue.
         if (parentElement.hasAttribute('data-hide-reason')) {
             return;
         }
-        // --- KEY CHANGE END ---
 
         const videoId = getVideoId(parentElement);
 
-        // Updated selector for video title in yt-lockup-view-model
         const videoTitleElement = parentElement.querySelector('h3.yt-lockup-metadata-view-model-wiz__heading-reset span.yt-core-attributed-string');
         const videoTitle = videoTitleElement ? videoTitleElement.textContent.trim() : 'Unknown Title';
 
@@ -325,26 +317,25 @@
             return;
         }
 
-        const normalizedTitle = videoTitle.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         for (const term of FILTERED_TITLE_TERMS) {
-            const normalizedTerm = term.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-            if (new RegExp(`\\b${normalizedTerm}(?:'s|s)?\\b`, 'i').test(normalizedTitle)) {
+            const escapedTerm = escapeRegExp(term);
+            const regex = new RegExp(`(?<![\\p{L}\\p{N}_])${escapedTerm}(?![\\p{L}\\p{N}_])`, 'iu');
+
+            if (regex.test(videoTitle)) {
                 logHiding(`Found "${term}" in title`, videoTitle);
                 hideElement(parentElement, `Filtered title term: ${term}`);
                 return;
             }
         }
-
+        
         // Simplified channel name extraction - names only
         let channelName = null;
 
-        // For yt-lockup-view-model elements
         const metadataRows = parentElement.querySelectorAll('.yt-content-metadata-view-model-wiz__metadata-row');
         for (const row of metadataRows) {
             const channelSpan = row.querySelector('span.yt-core-attributed-string');
             if (channelSpan) {
                 const text = channelSpan.textContent.trim();
-                // Check if this looks like a channel name (not views or time)
                 if (!text.includes('view') && !text.includes('ago') && !text.includes('•') && text.length > 0) {
                     channelName = text;
                     break;
@@ -352,7 +343,6 @@
             }
         }
 
-        // Fallback for other video container types
         if (!channelName) {
             channelName = getChannelName(parentElement);
         }
@@ -363,18 +353,19 @@
             return;
         }
 
-        // Log what we found for debugging
         debugLog(`   Found - Channel: "${channelName}", Video ID: "${videoId}"`);
 
         for (const term of FILTERED_CHANNEL_TERMS) {
-            if (new RegExp(`\\b${term}(?:'s|s)?\\b`, 'i').test(channelName)) {
+            const escapedTerm = escapeRegExp(term);
+            // Apply the same robust regex logic for channel names.
+            const regex = new RegExp(`(?<![\\p{L}\\p{N}_])${escapedTerm}(?![\\p{L}\\p{N}_])`, 'iu');
+            if (regex.test(channelName)) {
                 logHiding(`Found "${term}" in channel name: "${channelName}"`, videoTitle);
                 hideElement(parentElement, `Filtered channel term: ${term}`);
                 return;
             }
         }
 
-        // Check against subscribed channels (names only)
         const normalizedChannelName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const isSubscribed = subscribedChannels.has(normalizedChannelName);
 
@@ -384,7 +375,6 @@
             return;
         }
 
-        // Extract view count and date metadata
         let viewCountText = null;
         let metadataDate = null;
 
