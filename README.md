@@ -5,14 +5,14 @@ It will work on both the [home page](https://www.youtube.com) and [where we usua
 
 # What does it do?
 It will hide recommended videos:
-- If their thumbnails have been seen more than 10 times [(this value can be changed here)](https://github.com/BadisG/Better-Youtube-Recomendation-Algorithm/blob/7171e025cc40f4f037e86ccd654e90edb07e63a0/main.user.js#L18)
+- If their thumbnails have been seen more than 10 times [(this value can be changed here)](https://github.com/BadisG/Better-Youtube-Recomendation-Algorithm/blob/aa8819f2eb93d95eb01a07f1f64c025338b8e3bd/main.user.js#L20)
 - If they are from YouTube channels you are subscribed to
 - If they are playlists
 - If they are music mixes
 - If they have a progress bar (indicating they have already been watched)
 - If they are Upcoming
 
-You can also set [specific terms](https://github.com/BadisG/Better-Youtube-Recomendation-Algorithm/blob/a2a3f98b5c9c23c4664b758c88ef13e782c8ebd7/main.user.js#L20) and [a minimum views threshold](https://github.com/BadisG/Better-Youtube-Recomendation-Algorithm/blob/7171e025cc40f4f037e86ccd654e90edb07e63a0/main.user.js#L19) for a more refined filtering.
+You can also set [specific terms](https://github.com/BadisG/Better-Youtube-Recomendation-Algorithm/blob/aa8819f2eb93d95eb01a07f1f64c025338b8e3bd/main.user.js#L24) and [a minimum views threshold](https://github.com/BadisG/Better-Youtube-Recomendation-Algorithm/blob/aa8819f2eb93d95eb01a07f1f64c025338b8e3bd/main.user.js#L21) for a more refined filtering.
 
 # How to install
 ## 1) Install a user script manager:
