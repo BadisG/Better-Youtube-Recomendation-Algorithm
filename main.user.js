@@ -2,7 +2,7 @@
 // @name         Better Youtube Recommendation Algorithm
 // @namespace    http://tampermonkey.net/
 // @author       BadisG
-// @version      8.0
+// @version      8.2
 // @description  Count and hide YouTube thumbnails after 10 views, excluding subscribed channels, and hide playlist, live, and watched thumbnails.
 // @match        https://www.youtube.com/*
 // @grant        GM_getValue
@@ -12,33 +12,85 @@
 (function() {
     'use strict';
 
-    const DEBUG = false; // Set to true to enable debug logging, false to disable
-    let Threshold = 10;
-    const MINIMUM_VIEWS = 0; // Add a minimum views threshold here
+    // ===== CONFIGURATION SECTION =====
+    // All selectors and settings in one place for easy updates
+    const CONFIG = {
+        // Script settings
+        DEBUG: true,
+        THRESHOLD: 10,
+        MINIMUM_VIEWS: 0, // Add a minimum views threshold here
+
+        // Filter terms
+        FILTERED_TITLE_TERMS: ['aaaa', 'bbbb'], // Add words to filter titles that have those
+        FILTERED_CHANNEL_TERMS: ['cccc', 'dddd'], // Add words to filter channel names that have those
+
+        // Main container selectors
+        VIDEO_CONTAINER_SELECTORS: 'ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer, yt-lockup-view-model',
+
+        // Video information selectors
+        SELECTORS: {
+            // Video title
+            VIDEO_TITLE: 'h3.yt-lockup-metadata-view-model__heading-reset span.yt-core-attributed-string',
+            VIDEO_TITLE_FALLBACK: 'h3 a span.yt-core-attributed-string',
+
+            // Video link for ID extraction
+            VIDEO_LINK: 'a[href*="/watch?v="]',
+
+            // Metadata rows containing channel, views, date
+            METADATA_ROWS: '.yt-content-metadata-view-model__metadata-row',
+            METADATA_SPANS: 'span.yt-core-attributed-string',
+
+            // Channel name selectors (multiple fallbacks)
+            CHANNEL_NAME_PRIMARY: 'ytd-channel-name yt-formatted-string#text',
+            CHANNEL_NAME_METADATA: '.yt-content-metadata-view-model-wiz__metadata-row span.yt-core-attributed-string',
+            CHANNEL_NAME_LINK: 'a[href^="/@"]',
+
+            // Subscription page selectors
+            SUBSCRIPTION_GRID: 'ytd-expanded-shelf-contents-renderer #contents',
+            SUBSCRIPTION_LIST: 'ytd-section-list-renderer #items',
+            SUBSCRIPTION_CHANNELS: 'ytd-channel-renderer',
+            SUBSCRIPTION_NAMES: 'ytd-channel-name yt-formatted-string#text',
+
+            // Video type detection
+            PLAYLIST_INDICATORS: 'ytd-compact-playlist-renderer, ytd-item-section-renderer',
+            LIVE_BADGES: '[aria-label="LIVE"], .badge-style-type-live-now-alternate, badge-shape.badge-shape-wiz--live, .yt-badge-shape-wiz__text[aria-label="LIVE"]',
+            PROGRESS_BARS: '#progress, [class*="progress" i]',
+
+            // Watch page specific
+            WATCH_CONTAINER: 'ytd-watch-flexy',
+            SIDEBAR_RECOMMENDATIONS: 'ytd-compact-video-renderer',
+
+            // New layout elements
+            YT_LOCKUP_CONTENT_TYPE: '[ytb-content-type]',
+        }
+    };
+
+    // ===== SCRIPT VARIABLES =====
+    const DEBUG = CONFIG.DEBUG;
+    let Threshold = CONFIG.THRESHOLD;
+    const MINIMUM_VIEWS = CONFIG.MINIMUM_VIEWS;
     let subscribedChannels = new Set();
-    let currentObserver = null; // Track the current observer
-    const FILTERED_TITLE_TERMS = ['fsfzzerz', 'sdfzertzerzer']; // Add words to filter titles that have those
-    const FILTERED_CHANNEL_TERMS = ['qfrtzeerezt', 'truytuhfhgr']; // Add words to filter channel names that have those
+    let currentObserver = null;
+    const FILTERED_TITLE_TERMS = CONFIG.FILTERED_TITLE_TERMS;
+    const FILTERED_CHANNEL_TERMS = CONFIG.FILTERED_CHANNEL_TERMS;
+    const VIDEO_CONTAINER_SELECTORS = CONFIG.VIDEO_CONTAINER_SELECTORS;
 
-    // Define a constant for all target video/playlist container selectors
-    const VIDEO_CONTAINER_SELECTORS = 'ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer, yt-lockup-view-model';
-
-    // Debug logging function
+    // ===== UTILITY FUNCTIONS =====
     function debugLog(...args) {
         if (DEBUG) {
             console.log(...args);
         }
     }
 
-    // Colored logging functions
     function logHiding(reason, title) {
-        // This function is now more accurate, as we are always hiding, not deleting.
         debugLog(`%c❌ HIDING - ${reason}: "${title}"`, 'color: #C03030; font-weight: bold;');
     }
 
     function logShowing(reason, title) {
-            debugLog(`%c✅ SHOWING - ${reason}: "${title}"`, 'color: #30C030; font-weight: bold;');
+        debugLog(`%c✅ SHOWING - ${reason}: "${title}"`, 'color: #30C030; font-weight: bold;');
     }
+
+    // ===== MAIN FUNCTIONS =====
 
     function shouldRunOnCurrentPage() {
         const pathname = window.location.pathname;
@@ -59,18 +111,16 @@
 
             const scrollInterval = setInterval(() => {
                 scrollCount++;
-
                 window.scrollTo(0, document.documentElement.scrollHeight);
                 const currentHeight = document.documentElement.scrollHeight;
 
-                // Updated selector to get channel names from ytd-channel-name elements
-                const channelNameElements = document.querySelectorAll('ytd-channel-name yt-formatted-string#text');
+                // Use CONFIG selector
+                const channelNameElements = document.querySelectorAll(CONFIG.SELECTORS.SUBSCRIPTION_NAMES);
                 debugLog(`Scroll ${scrollCount}: Found ${channelNameElements.length} channel names, height: ${currentHeight}`);
 
                 channelNameElements.forEach(nameElement => {
                     const channelName = nameElement.textContent.trim();
                     if (channelName && channelName.length > 0) {
-                        // Normalize the name for consistent storage
                         const normalizedName = channelName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
                         if (!newSubscribedNames.has(normalizedName)) {
                             newSubscribedNames.add(normalizedName);
@@ -86,7 +136,7 @@
                         debugLog('Finished scrolling. Final collection...');
 
                         setTimeout(() => {
-                            const finalChannelNameElements = document.querySelectorAll('ytd-channel-name yt-formatted-string#text');
+                            const finalChannelNameElements = document.querySelectorAll(CONFIG.SELECTORS.SUBSCRIPTION_NAMES);
                             finalChannelNameElements.forEach(nameElement => {
                                 const channelName = nameElement.textContent.trim();
                                 if (channelName && channelName.length > 0) {
@@ -101,7 +151,6 @@
                                 debugLog('Successfully saved subscribed channel names:', Array.from(newSubscribedNames));
                                 debugLog('Total subscribed channel names found:', subscribedChannels.size);
 
-                                // Clean up old storage
                                 GM_setValue('subscribedChannelHandles', JSON.stringify([]));
                                 GM_setValue('subscribedChannels', JSON.stringify([]));
                             } else {
@@ -121,11 +170,10 @@
             }, 2000);
         }
 
-        // Rest of the observer code remains the same...
         const observer = new MutationObserver((mutations, obs) => {
-            const gridContainer = document.querySelector('ytd-expanded-shelf-contents-renderer #contents');
-            const listContainer = document.querySelector('ytd-section-list-renderer #items');
-            const channelRenderers = document.querySelectorAll('ytd-channel-renderer');
+            const gridContainer = document.querySelector(CONFIG.SELECTORS.SUBSCRIPTION_GRID);
+            const listContainer = document.querySelector(CONFIG.SELECTORS.SUBSCRIPTION_LIST);
+            const channelRenderers = document.querySelectorAll(CONFIG.SELECTORS.SUBSCRIPTION_CHANNELS);
 
             if ((gridContainer || listContainer) && channelRenderers.length > 0) {
                 debugLog('Subscription page content detected with channels. Starting fetch...');
@@ -142,7 +190,7 @@
 
         setTimeout(() => {
             observer.disconnect();
-            const channelRenderers = document.querySelectorAll('ytd-channel-renderer');
+            const channelRenderers = document.querySelectorAll(CONFIG.SELECTORS.SUBSCRIPTION_CHANNELS);
             if (channelRenderers.length > 0) {
                 debugLog('Timeout reached, but found channels. Starting fetch anyway...');
                 updateSubscribedChannels();
@@ -153,66 +201,44 @@
     }
 
     function getChannelName(thumbnailElement) {
-        if (window.location.href.includes("watch?v=")) {
-            // On an individual video page - try multiple selectors
+        // Try multiple selectors in order of preference
+        const selectors = [
+            CONFIG.SELECTORS.CHANNEL_NAME_PRIMARY,
+            CONFIG.SELECTORS.CHANNEL_NAME_METADATA,
+            CONFIG.SELECTORS.CHANNEL_NAME_LINK
+        ];
 
-            // First try: look for channel name in metadata
-            const channelNameSpan = thumbnailElement.querySelector('.yt-content-metadata-view-model-wiz__metadata-row span.yt-core-attributed-string');
-            if (channelNameSpan && channelNameSpan.textContent && channelNameSpan.textContent.trim().length > 0) {
-                return channelNameSpan.textContent.trim();
+        for (const selector of selectors) {
+            const element = thumbnailElement.querySelector(selector);
+            if (element && element.textContent && element.textContent.trim().length > 0) {
+                return element.textContent.trim();
             }
-
-            // Fallback: try other possible selectors
-            const channelNameElement = thumbnailElement.querySelector('ytd-channel-name yt-formatted-string#text');
-            return channelNameElement ? channelNameElement.textContent.trim() : null;
-
-        } else if (window.location.href === "https://www.youtube.com/" || window.location.pathname === '/') {
-            // On the youtube home page - updated for new layout
-
-            // First try the new layout structure
-            const newLayoutChannelLink = thumbnailElement.querySelector('a[href^="/@"]');
-            if (newLayoutChannelLink && newLayoutChannelLink.textContent && newLayoutChannelLink.textContent.trim().length > 0) {
-                return newLayoutChannelLink.textContent.trim();
-            }
-
-            // Fallback to old layout
-            const possibleChannelLinks = thumbnailElement.querySelectorAll('a[href^="/@"]');
-            for (const link of possibleChannelLinks) {
-                if (link.textContent && link.textContent.trim().length > 0) {
-                    return link.textContent.trim();
-                }
-            }
-            return null;
         }
+        return null;
     }
 
     function isNormalVideo(element) {
-        // New check for the new layout element <yt-lockup-view-model>
+        // Check for new layout element
         if (element.tagName.toUpperCase() === 'YT-LOCKUP-VIEW-MODEL') {
             const contentType = element.getAttribute('ytb-content-type');
-            // This element is used for regular videos on the watch page sidebar
-            // and for mixes/playlists on the homepage. We only want to hide the playlists.
             if (contentType === 'playlist' || contentType === 'channel') {
                 return { isNormal: false, reason: `yt-lockup-view-model is a ${contentType}` };
             }
-            // If it's a 'video', let it pass for further checks.
         }
 
-        // Your existing checks are still valuable for other element types
-        if (element.tagName.toUpperCase() === 'YTD-COMPACT-PLAYLIST-RENDERER' ||
-            element.tagName.toUpperCase() === 'YTD-ITEM-SECTION-RENDERER') {
+        // Check for playlist indicators
+        if (element.matches(CONFIG.SELECTORS.PLAYLIST_INDICATORS)) {
             return { isNormal: false, reason: 'Playlist element detected' };
         }
 
         // Check for live streams
-        const hasLiveBadge = element.querySelector('[aria-label="LIVE"], .badge-style-type-live-now-alternate, badge-shape.badge-shape-wiz--live');
-        const isLiveText = element.querySelector('.yt-badge-shape-wiz__text[aria-label="LIVE"]');
-        if (hasLiveBadge || isLiveText) {
+        const hasLiveBadge = element.querySelector(CONFIG.SELECTORS.LIVE_BADGES);
+        if (hasLiveBadge) {
             return { isNormal: false, reason: 'Live stream detected' };
         }
 
-        // Check for watched videos (progress bar)
-        const hasProgressBar = element.querySelector('#progress, [class*="progress" i]');
+        // Check for watched videos
+        const hasProgressBar = element.querySelector(CONFIG.SELECTORS.PROGRESS_BARS);
         if (hasProgressBar) {
             return { isNormal: false, reason: 'Already watched' };
         }
@@ -263,13 +289,12 @@
     function getVideoId(element) {
         if (!element) return null;
 
-        const link = element.querySelector('a[href*="/watch?v="]');
+        const link = element.querySelector(CONFIG.SELECTORS.VIDEO_LINK);
         if (link && link.href) {
             try {
                 const url = new URL(link.href);
                 return url.searchParams.get('v');
             } catch (e) {
-                // Fallback for relative URLs like /watch?v=...
                 const match = link.href.match(/[?&]v=([^&]+)/);
                 if (match && match[1]) {
                     return match[1];
@@ -290,7 +315,7 @@
 
         let parentElement = thumbnailElement.matches(VIDEO_CONTAINER_SELECTORS) ?
             thumbnailElement :
-        thumbnailElement.closest(VIDEO_CONTAINER_SELECTORS);
+            thumbnailElement.closest(VIDEO_CONTAINER_SELECTORS);
 
         if (!parentElement) return;
 
@@ -300,7 +325,12 @@
 
         const videoId = getVideoId(parentElement);
 
-        const videoTitleElement = parentElement.querySelector('h3.yt-lockup-metadata-view-model-wiz__heading-reset span.yt-core-attributed-string');
+        // Try primary selector first, then fallback
+        let videoTitleElement = parentElement.querySelector(CONFIG.SELECTORS.VIDEO_TITLE);
+        if (!videoTitleElement) {
+            videoTitleElement = parentElement.querySelector(CONFIG.SELECTORS.VIDEO_TITLE_FALLBACK);
+        }
+
         const videoTitle = videoTitleElement ? videoTitleElement.textContent.trim() : 'Unknown Title';
 
         if (videoTitle === 'Unknown Title') {
@@ -317,6 +347,7 @@
             return;
         }
 
+        // Check filtered terms
         for (const term of FILTERED_TITLE_TERMS) {
             const escapedTerm = escapeRegExp(term);
             const regex = new RegExp(`(?<![\\p{L}\\p{N}_])${escapedTerm}(?![\\p{L}\\p{N}_])`, 'iu');
@@ -327,13 +358,13 @@
                 return;
             }
         }
-        
-        // Simplified channel name extraction - names only
-        let channelName = null;
 
-        const metadataRows = parentElement.querySelectorAll('.yt-content-metadata-view-model-wiz__metadata-row');
+        // Get channel name using updated selectors
+        let channelName = null;
+        const metadataRows = parentElement.querySelectorAll(CONFIG.SELECTORS.METADATA_ROWS);
+
         for (const row of metadataRows) {
-            const channelSpan = row.querySelector('span.yt-core-attributed-string');
+            const channelSpan = row.querySelector(CONFIG.SELECTORS.METADATA_SPANS);
             if (channelSpan) {
                 const text = channelSpan.textContent.trim();
                 if (!text.includes('view') && !text.includes('ago') && !text.includes('•') && text.length > 0) {
@@ -355,9 +386,9 @@
 
         debugLog(`   Found - Channel: "${channelName}", Video ID: "${videoId}"`);
 
+        // Check filtered channel terms
         for (const term of FILTERED_CHANNEL_TERMS) {
             const escapedTerm = escapeRegExp(term);
-            // Apply the same robust regex logic for channel names.
             const regex = new RegExp(`(?<![\\p{L}\\p{N}_])${escapedTerm}(?![\\p{L}\\p{N}_])`, 'iu');
             if (regex.test(channelName)) {
                 logHiding(`Found "${term}" in channel name: "${channelName}"`, videoTitle);
@@ -379,7 +410,7 @@
         let metadataDate = null;
 
         for (const row of metadataRows) {
-            const spans = row.querySelectorAll('span.yt-core-attributed-string');
+            const spans = row.querySelectorAll(CONFIG.SELECTORS.METADATA_SPANS);
             for (const span of spans) {
                 const text = span.textContent.trim().toLowerCase();
                 if (text.includes('view') && !viewCountText) {
@@ -589,18 +620,17 @@
     }
 
     function observeFirstVideo() {
-        // Specifically watch for the main video content to load
         const observer = new MutationObserver((mutations, obs) => {
-            // Check for both the main video container and sidebar recommendations
-            const primaryVideo = document.querySelector('ytd-watch-flexy');
-            const sidebarRecommendations = document.querySelectorAll('ytd-compact-video-renderer');
+            // Use CONFIG selectors
+            const primaryVideo = document.querySelector(CONFIG.SELECTORS.WATCH_CONTAINER);
+            const sidebarRecommendations = document.querySelectorAll(CONFIG.SELECTORS.SIDEBAR_RECOMMENDATIONS);
 
             if (primaryVideo && sidebarRecommendations.length > 0) {
                 debugLog('Main video container and recommendations detected, processing...');
                 setTimeout(() => {
                     processExistingThumbnails();
                     observeDOMChanges();
-                }, 500); // Slightly longer delay
+                }, 500);
                 obs.disconnect();
             }
         });
@@ -610,10 +640,8 @@
             subtree: true
         });
 
-        // Disconnect after 10 seconds to prevent infinite observation
         setTimeout(() => {
             observer.disconnect();
-            // Fallback: if observer didn't catch it, try processing anyway
             if (shouldRunOnCurrentPage()) {
                 debugLog('Fallback processing after observer timeout');
                 processExistingThumbnails();
