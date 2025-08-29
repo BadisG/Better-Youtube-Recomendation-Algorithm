@@ -2,7 +2,7 @@
 // @name         Better Youtube Recommendation Algorithm
 // @namespace    http://tampermonkey.net/
 // @author       BadisG
-// @version      8.2
+// @version      8.3
 // @description  Count and hide YouTube thumbnails after 10 views, excluding subscribed channels, and hide playlist, live, and watched thumbnails.
 // @match        https://www.youtube.com/*
 // @grant        GM_getValue
@@ -17,7 +17,7 @@
     const CONFIG = {
         
         // ===== USER CONFIG =====
-        DEBUG: true,
+        DEBUG: false,
         THRESHOLD: 10,
         MINIMUM_VIEWS: 0, // Add a minimum views threshold here
 
