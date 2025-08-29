@@ -15,14 +15,20 @@
     // ===== CONFIGURATION SECTION =====
     // All selectors and settings in one place for easy updates
     const CONFIG = {
-        // Script settings
+        
+        // ===== USER CONFIG =====
         DEBUG: true,
         THRESHOLD: 10,
         MINIMUM_VIEWS: 0, // Add a minimum views threshold here
 
+        // Date filtering (optional: leave empty/null to disable)
+        BEFORE_DATE: null, // exemple: "2024-04-16"
+        AFTER_DATE: null, // exemple: "2006-05-20"
+
         // Filter terms
-        FILTERED_TITLE_TERMS: ['aaaa', 'bbbb'], // Add words to filter titles that have those
-        FILTERED_CHANNEL_TERMS: ['cccc', 'dddd'], // Add words to filter channel names that have those
+        FILTERED_TITLE_TERMS: ['aaaa', 'bbbb'],
+        FILTERED_CHANNEL_TERMS: ['cccc', 'dddd'],
+        // ===== USER CONFIG (END) =====
 
         // Main container selectors
         VIDEO_CONTAINER_SELECTORS: 'ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer, yt-lockup-view-model',
@@ -415,7 +421,7 @@
                 const text = span.textContent.trim().toLowerCase();
                 if (text.includes('view') && !viewCountText) {
                     viewCountText = text;
-                } else if (text.match(/\d+\s+(second|minute|hour|day|week|month|year)s?\s+ago$/) && !metadataDate) {
+                } else if (text.match(/^(streamed\s+)?\d+\s+(second|minute|hour|day|week|month|year)s?\s+ago$/i) && !metadataDate) {
                     metadataDate = text;
                 }
             }
@@ -429,6 +435,23 @@
 
         const numericViews = parseViewCount(viewCountText);
         debugLog(`   Channel: ${channelName}, Views: ${viewCountText} (${numericViews.toLocaleString()}), Date: ${metadataDate}`);
+
+        const videoDate = parseDateFromMetadata(metadataDate);
+        if (videoDate) {
+            let afterDate = CONFIG.AFTER_DATE ? new Date(CONFIG.AFTER_DATE) : null;
+            let beforeDate = CONFIG.BEFORE_DATE ? new Date(CONFIG.BEFORE_DATE) : null;
+
+            if (afterDate && videoDate < afterDate) {
+                logHiding(`Video before AFTER_DATE (${metadataDate})`, videoTitle);
+                hideElement(parentElement, `Before AFTER_DATE`);
+                return;
+            }
+            if (beforeDate && videoDate > beforeDate) {
+                logHiding(`Video after BEFORE_DATE (${metadataDate})`, videoTitle);
+                hideElement(parentElement, `After BEFORE_DATE`);
+                return;
+            }
+        }
 
         if (numericViews < MINIMUM_VIEWS) {
             logHiding(`Below minimum views: ${viewCountText}`, videoTitle);
@@ -524,18 +547,29 @@
 
     function parseDateFromMetadata(metadataText) {
         const now = new Date();
-        const match = metadataText.match(/^(Streamed\s+)?(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago$/);
+        // MODIFIED: Made "Streamed " optional at the beginning of the regex
+        const match = metadataText.match(/^(Streamed\s+)?(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago$/i);
+
         if (match) {
-            const value = parseInt(match[2], 10); // The numeric value
-            const unit = match[3]; // The time unit
+            const value = parseInt(match[2], 10); // The numeric value is now in the 2nd capture group
+            const unit = match[3]; // The time unit is now in the 3rd capture group
+
             switch (unit) {
-                case 'second': return new Date(now - value * 1000);
-                case 'minute': return new Date(now - value * 60000);
-                case 'hour': return new Date(now - value * 3600000);
-                case 'day': return new Date(now - value * 86400000);
-                case 'week': return new Date(now - value * 7 * 86400000);
-                case 'month': return new Date(now.setMonth(now.getMonth() - value));
-                case 'year': return new Date(now.setFullYear(now.getFullYear() - value));
+                case 'second':
+                    return new Date(now - value * 1000);
+                case 'minute':
+                    return new Date(now - value * 60000);
+                case 'hour':
+                    return new Date(now - value * 3600000);
+                case 'day':
+                    return new Date(now - value * 86400000);
+                case 'week':
+                    return new Date(now - value * 7 * 86400000);
+                case 'month':
+                    // Note: setMonth can have edge cases, but is generally fine for this purpose
+                    return new Date(now.setMonth(now.getMonth() - value));
+                case 'year':
+                    return new Date(now.setFullYear(now.getFullYear() - value));
             }
         }
         console.error('Unrecognized date format (not a date):', metadataText);
