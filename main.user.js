@@ -722,8 +722,9 @@
         }
     }
 
+    injectCSS(); // Inject CSS immediately
+
     function init() {
-        injectCSS();
         loadStoredSubscribedChannels();
         monitorHiddenElements(); // Add this line
         convertCurrentUrl(); // Add this line
