@@ -254,21 +254,17 @@
 
     function hideElement(element, reason) {
         if (element) {
-            // Set the attribute so our CSS rule and monitor can find it.
             element.setAttribute('data-hide-reason', reason);
-
-            // Also apply a direct, forceful inline style to win potential race conditions.
-            // Using !important here makes it very difficult for other scripts to override.
+            element.setAttribute('data-processed', 'hide');
             element.style.display = 'none !important';
         }
     }
 
     function showElement(element) {
         if (element) {
-            // Remove the attribute that our CSS rule targets.
+            // Remove the hide attribute and mark as processed/shown
             element.removeAttribute('data-hide-reason');
-
-            // Remove the inline style to allow the element to return to its default display state.
+            element.setAttribute('data-processed', 'show');
             element.style.display = '';
         }
     }
@@ -609,6 +605,19 @@
     function injectCSS() {
         const style = document.createElement('style');
         style.textContent = `
+    /* Hide all video containers by default until processed */
+    ${VIDEO_CONTAINER_SELECTORS} {
+        visibility: hidden !important;
+        opacity: 0 !important;
+    }
+
+    /* Show processed videos that passed the filter */
+    ${VIDEO_CONTAINER_SELECTORS}[data-processed="show"] {
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+
+    /* Keep hidden videos hidden */
     [data-hide-reason] {
         display: none !important;
         visibility: hidden !important;
