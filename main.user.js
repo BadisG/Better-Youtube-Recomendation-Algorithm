@@ -30,9 +30,14 @@
         FILTERED_CHANNEL_TERMS: ['cccc', 'dddd'],
         // ===== USER CONFIG (END) =====
 
+        VIDEO_CONTAINER_SELECTORS_BY_PAGE: {
+            // More precise selectors for the homepage to avoid double-processing
+            HOME: 'ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer',
+            // Broader selectors for the watch page sidebar
+            WATCH: 'ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer, yt-lockup-view-model'
+        },
+        
         // Main container selectors
-        VIDEO_CONTAINER_SELECTORS: 'ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer, yt-lockup-view-model',
-
         // Video information selectors
         SELECTORS: {
             // Video title
@@ -94,6 +99,16 @@
 
     function logShowing(reason, title) {
         debugLog(`%c✅ SHOWING - ${reason}: "${title}"`, 'color: #30C030; font-weight: bold;');
+    }
+
+    function getVideoContainerSelectors() {
+        const pathname = window.location.pathname;
+        // Use the broader 'WATCH' selectors if on a watch page
+        if (pathname === '/watch') {
+            return CONFIG.VIDEO_CONTAINER_SELECTORS_BY_PAGE.WATCH;
+        }
+        // Default to the more precise 'HOME' selectors for the homepage and other pages
+        return CONFIG.VIDEO_CONTAINER_SELECTORS_BY_PAGE.HOME;
     }
 
     // ===== MAIN FUNCTIONS =====
@@ -315,9 +330,9 @@
             return;
         }
 
-        let parentElement = thumbnailElement.matches(VIDEO_CONTAINER_SELECTORS) ?
+        let parentElement = thumbnailElement.matches(getVideoContainerSelectors()) ?
             thumbnailElement :
-            thumbnailElement.closest(VIDEO_CONTAINER_SELECTORS);
+        thumbnailElement.closest(getVideoContainerSelectors());
 
         if (!parentElement) return;
 
@@ -468,6 +483,22 @@
         }
     }
 
+    function hideShortsShelf() {
+        if (window.location.pathname !== '/') {
+            return;
+        }
+
+        // This code will only run on the homepage.
+        const shelves = document.querySelectorAll('ytd-rich-shelf-renderer');
+        shelves.forEach(shelf => {
+            const titleElement = shelf.querySelector('#title.style-scope.ytd-rich-shelf-renderer');
+            if (titleElement && titleElement.textContent.trim() === 'Shorts') {
+                debugLog('Hiding Shorts shelf on homepage.');
+                shelf.style.display = 'none';
+            }
+        });
+    }
+
     function observeDOMChanges() {
         // Disconnect existing observer if any
         if (currentObserver) {
@@ -477,13 +508,14 @@
 
         currentObserver = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
+                hideShortsShelf();
                 if (mutation.type === 'childList') {
                     mutation.addedNodes.forEach((node) => {
                         if (node.nodeType === Node.ELEMENT_NODE) {
-                            if (node.matches(VIDEO_CONTAINER_SELECTORS)) {
+                            if (node.matches(getVideoContainerSelectors())) {
                                 processThumbnail(node);
                             } else {
-                                node.querySelectorAll(VIDEO_CONTAINER_SELECTORS).forEach(processThumbnail);
+                                node.querySelectorAll(getVideoContainerSelectors()).forEach(processThumbnail);
                             }
                         }
                     });
@@ -506,7 +538,7 @@
     }
 
     function processExistingThumbnails() {
-        const thumbnails = document.querySelectorAll(VIDEO_CONTAINER_SELECTORS);
+        const thumbnails = document.querySelectorAll(getVideoContainerSelectors());
         debugLog('Processing existing thumbnails:', thumbnails.length);
         thumbnails.forEach(processThumbnail);
     }
@@ -516,7 +548,7 @@
         let retryCount = 0;
 
         function attemptProcess() {
-            const thumbnails = document.querySelectorAll(VIDEO_CONTAINER_SELECTORS);
+            const thumbnails = document.querySelectorAll(getVideoContainerSelectors());
             debugLog(`Attempt ${retryCount + 1}: Found ${thumbnails.length} thumbnails`);
 
             if (thumbnails.length > 0 || retryCount >= maxRetries) {
@@ -617,15 +649,16 @@
 
         const style = document.createElement('style');
         style.id = 'youtube-filter-css'; // Add ID for easy removal
+        const selectors = getVideoContainerSelectors();
         style.textContent = `
     /* Hide all video containers by default until processed */
-    ${VIDEO_CONTAINER_SELECTORS} {
+    ${selectors} {
         visibility: hidden !important;
         opacity: 0 !important;
     }
 
     /* Show processed videos that passed the filter */
-    ${VIDEO_CONTAINER_SELECTORS}[data-processed="show"] {
+    ${selectors}[data-processed="show"] {
         visibility: visible !important;
         opacity: 1 !important;
     }
