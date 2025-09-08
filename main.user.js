@@ -603,7 +603,20 @@
     }
 
     function injectCSS() {
+        // Remove existing style if it exists
+        const existingStyle = document.getElementById('youtube-filter-css');
+        if (existingStyle) {
+            existingStyle.remove();
+        }
+
+        // Only inject CSS if we should run on current page
+        if (!shouldRunOnCurrentPage()) {
+            debugLog('Not injecting CSS - not on target page');
+            return;
+        }
+
         const style = document.createElement('style');
+        style.id = 'youtube-filter-css'; // Add ID for easy removal
         style.textContent = `
     /* Hide all video containers by default until processed */
     ${VIDEO_CONTAINER_SELECTORS} {
@@ -643,6 +656,15 @@
     }
 `;
         document.head.appendChild(style);
+        debugLog('CSS injected for target page');
+    }
+
+    function removeCSS() {
+        const existingStyle = document.getElementById('youtube-filter-css');
+        if (existingStyle) {
+            existingStyle.remove();
+            debugLog('CSS removed - not on target page');
+        }
     }
 
     function monitorHiddenElements() {
@@ -722,20 +744,22 @@
         }
     }
 
-    injectCSS(); // Inject CSS immediately
-
     function init() {
         loadStoredSubscribedChannels();
-        monitorHiddenElements(); // Add this line
-        convertCurrentUrl(); // Add this line
+        monitorHiddenElements();
+        convertCurrentUrl();
+
         if (window.location.pathname === '/feed/channels') {
             debugLog('On channels page, fetching subscribed channels');
+            removeCSS(); // Make sure CSS is not active
             fetchSubscribedChannels();
         } else if (shouldRunOnCurrentPage()) {
             debugLog('Processing thumbnails');
+            injectCSS(); // Inject CSS for target pages
             processPageWithRetry();
         } else {
             debugLog('Not on a target page, script inactive');
+            removeCSS(); // Make sure CSS is not active
         }
     }
 
@@ -745,17 +769,19 @@
         debugLog('Navigation finished, URL:', currentUrl);
 
         convertCurrentUrl();
-        // The processingQueue.clear() line has been removed.
 
         if (currentUrl.includes('/feed/channels')) {
+            removeCSS(); // Remove CSS for channels page
             fetchSubscribedChannels();
         } else if (shouldRunOnCurrentPage()) {
+            injectCSS(); // Inject CSS for target pages
             // Use a more robust approach with multiple retry attempts
             setTimeout(() => {
                 debugLog('Starting post-navigation processing...');
                 processPageWithRetry(8, 500); // Increased retries and delay
             }, 1000); // Wait longer before starting
         } else {
+            removeCSS(); // Remove CSS for non-target pages
             debugLog('Navigated to a non-target page, script inactive');
             if (currentObserver) {
                 currentObserver.disconnect();
