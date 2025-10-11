@@ -484,21 +484,37 @@
     }
 
     function hideShortsShelf() {
-        if (window.location.pathname !== '/') {
+        // This code will run on homepage and watch pages
+        const pathname = window.location.pathname;
+        const isHomePage = pathname === '/';
+        const isWatchPage = pathname === '/watch';
+
+        if (!isHomePage && !isWatchPage) {
             return;
         }
 
-        // This code will only run on the homepage.
-        const shelves = document.querySelectorAll('ytd-rich-shelf-renderer');
-        shelves.forEach(shelf => {
-            const titleElement = shelf.querySelector('#title.style-scope.ytd-rich-shelf-renderer');
-            if (titleElement && titleElement.textContent.trim() === 'Shorts') {
-                debugLog('Hiding Shorts shelf on homepage.');
-                shelf.style.display = 'none';
-            }
-        });
-    }
+        // Hide Shorts shelf on homepage (ytd-rich-shelf-renderer with "Shorts" title)
+        if (isHomePage) {
+            const shelves = document.querySelectorAll('ytd-rich-shelf-renderer');
+            shelves.forEach(shelf => {
+                const titleElement = shelf.querySelector('#title.style-scope.ytd-rich-shelf-renderer');
+                if (titleElement && titleElement.textContent.trim() === 'Shorts') {
+                    debugLog('Hiding Shorts shelf on homepage.');
+                    shelf.style.display = 'none';
+                }
+            });
+        }
 
+        // Hide Shorts shelf on watch pages (ytd-reel-shelf-renderer)
+        if (isWatchPage) {
+            const reelShelves = document.querySelectorAll('ytd-reel-shelf-renderer');
+            reelShelves.forEach(shelf => {
+                debugLog('Hiding Shorts reel shelf on watch page.');
+                shelf.style.display = 'none';
+            });
+        }
+    }
+    
     function observeDOMChanges() {
         // Disconnect existing observer if any
         if (currentObserver) {
