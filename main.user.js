@@ -2,21 +2,21 @@
 // @name         Better Youtube Recommendation Algorithm
 // @namespace    http://tampermonkey.net/
 // @author       BadisG
-// @version      8.3
+// @version      8.4
 // @description  Count and hide YouTube thumbnails after 10 views, excluding subscribed channels, and hide playlist, live, and watched thumbnails.
 // @match        https://www.youtube.com/*
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @run-at       document-start
 // ==/UserScript==
 
 (function() {
     'use strict';
 
+    const SCRIPT_START_TIME = performance.now();
+
     // ===== CONFIGURATION SECTION =====
-    // All selectors and settings in one place for easy updates
     const CONFIG = {
-        
-        // ===== USER CONFIG =====
         DEBUG: false,
         THRESHOLD: 10,
         MINIMUM_VIEWS: 0, // Add a minimum views threshold here
@@ -28,50 +28,30 @@
         // Filter terms
         FILTERED_TITLE_TERMS: ['aaaa', 'bbbb'],
         FILTERED_CHANNEL_TERMS: ['cccc', 'dddd'],
-        // ===== USER CONFIG (END) =====
 
         VIDEO_CONTAINER_SELECTORS_BY_PAGE: {
-            // More precise selectors for the homepage to avoid double-processing
             HOME: 'ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer',
-            // Broader selectors for the watch page sidebar
             WATCH: 'ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer, yt-lockup-view-model'
         },
-        
-        // Main container selectors
-        // Video information selectors
+
         SELECTORS: {
-            // Video title
             VIDEO_TITLE: 'h3.yt-lockup-metadata-view-model__heading-reset span.yt-core-attributed-string',
             VIDEO_TITLE_FALLBACK: 'h3 a span.yt-core-attributed-string',
-
-            // Video link for ID extraction
             VIDEO_LINK: 'a[href*="/watch?v="]',
-
-            // Metadata rows containing channel, views, date
             METADATA_ROWS: '.yt-content-metadata-view-model__metadata-row',
             METADATA_SPANS: 'span.yt-core-attributed-string',
-
-            // Channel name selectors (multiple fallbacks)
             CHANNEL_NAME_PRIMARY: 'ytd-channel-name yt-formatted-string#text',
             CHANNEL_NAME_METADATA: '.yt-content-metadata-view-model-wiz__metadata-row span.yt-core-attributed-string',
             CHANNEL_NAME_LINK: 'a[href^="/@"]',
-
-            // Subscription page selectors
             SUBSCRIPTION_GRID: 'ytd-expanded-shelf-contents-renderer #contents',
             SUBSCRIPTION_LIST: 'ytd-section-list-renderer #items',
             SUBSCRIPTION_CHANNELS: 'ytd-channel-renderer',
             SUBSCRIPTION_NAMES: 'ytd-channel-name yt-formatted-string#text',
-
-            // Video type detection
             PLAYLIST_INDICATORS: 'ytd-compact-playlist-renderer, ytd-item-section-renderer',
             LIVE_BADGES: '[aria-label="LIVE"], .badge-style-type-live-now-alternate, badge-shape.badge-shape-wiz--live, .yt-badge-shape-wiz__text[aria-label="LIVE"]',
             PROGRESS_BARS: '#progress, [class*="progress" i]',
-
-            // Watch page specific
             WATCH_CONTAINER: 'ytd-watch-flexy',
             SIDEBAR_RECOMMENDATIONS: 'ytd-compact-video-renderer',
-
-            // New layout elements
             YT_LOCKUP_CONTENT_TYPE: '[ytb-content-type]',
         }
     };
@@ -84,12 +64,21 @@
     let currentObserver = null;
     const FILTERED_TITLE_TERMS = CONFIG.FILTERED_TITLE_TERMS;
     const FILTERED_CHANNEL_TERMS = CONFIG.FILTERED_CHANNEL_TERMS;
-    const VIDEO_CONTAINER_SELECTORS = CONFIG.VIDEO_CONTAINER_SELECTORS;
+
+    // Track CSS state - IMPORTANT: Don't remove CSS, just update if needed
+    let cssInjectedForPage = null; // Track which page type CSS was injected for
 
     // ===== UTILITY FUNCTIONS =====
     function debugLog(...args) {
         if (DEBUG) {
             console.log(...args);
+        }
+    }
+
+    function timingLog(message, color = '#FF6600') {
+        if (DEBUG) {
+            const elapsed = performance.now() - SCRIPT_START_TIME;
+            console.log(`%c[TIMING +${elapsed.toFixed(2)}ms] ${message}`, `color: ${color}; font-weight: bold;`);
         }
     }
 
@@ -103,12 +92,18 @@
 
     function getVideoContainerSelectors() {
         const pathname = window.location.pathname;
-        // Use the broader 'WATCH' selectors if on a watch page
         if (pathname === '/watch') {
             return CONFIG.VIDEO_CONTAINER_SELECTORS_BY_PAGE.WATCH;
         }
-        // Default to the more precise 'HOME' selectors for the homepage and other pages
         return CONFIG.VIDEO_CONTAINER_SELECTORS_BY_PAGE.HOME;
+    }
+
+    function getCurrentPageType() {
+        const pathname = window.location.pathname;
+        if (pathname === '/') return 'HOME';
+        if (pathname === '/watch') return 'WATCH';
+        if (pathname === '/feed/channels') return 'CHANNELS';
+        return 'OTHER';
     }
 
     // ===== MAIN FUNCTIONS =====
@@ -135,7 +130,6 @@
                 window.scrollTo(0, document.documentElement.scrollHeight);
                 const currentHeight = document.documentElement.scrollHeight;
 
-                // Use CONFIG selector
                 const channelNameElements = document.querySelectorAll(CONFIG.SELECTORS.SUBSCRIPTION_NAMES);
                 debugLog(`Scroll ${scrollCount}: Found ${channelNameElements.length} channel names, height: ${currentHeight}`);
 
@@ -222,7 +216,6 @@
     }
 
     function getChannelName(thumbnailElement) {
-        // Try multiple selectors in order of preference
         const selectors = [
             CONFIG.SELECTORS.CHANNEL_NAME_PRIMARY,
             CONFIG.SELECTORS.CHANNEL_NAME_METADATA,
@@ -239,7 +232,6 @@
     }
 
     function isNormalVideo(element) {
-        // Check for new layout element
         if (element.tagName.toUpperCase() === 'YT-LOCKUP-VIEW-MODEL') {
             const contentType = element.getAttribute('ytb-content-type');
             if (contentType === 'playlist' || contentType === 'channel') {
@@ -247,18 +239,15 @@
             }
         }
 
-        // Check for playlist indicators
         if (element.matches(CONFIG.SELECTORS.PLAYLIST_INDICATORS)) {
             return { isNormal: false, reason: 'Playlist element detected' };
         }
 
-        // Check for live streams
         const hasLiveBadge = element.querySelector(CONFIG.SELECTORS.LIVE_BADGES);
         if (hasLiveBadge) {
             return { isNormal: false, reason: 'Live stream detected' };
         }
 
-        // Check for watched videos
         const hasProgressBar = element.querySelector(CONFIG.SELECTORS.PROGRESS_BARS);
         if (hasProgressBar) {
             return { isNormal: false, reason: 'Already watched' };
@@ -277,7 +266,6 @@
 
     function showElement(element) {
         if (element) {
-            // Remove the hide attribute and mark as processed/shown
             element.removeAttribute('data-hide-reason');
             element.setAttribute('data-processed', 'show');
             element.style.display = '';
@@ -289,14 +277,12 @@
         const isWatchPage = window.location.pathname === '/watch';
 
         if (isHomePage) {
-            // On homepage, process rich items, compact videos, and the new yt-lockup-view-model
             return element.tagName === 'YTD-RICH-ITEM-RENDERER' ||
                 element.tagName === 'YTD-COMPACT-VIDEO-RENDERER' ||
                 element.tagName === 'YT-LOCKUP-VIEW-MODEL';
         } else if (isWatchPage) {
-            // On watch pages, only process compact video renderers (sidebar recommendations)
-            const tagName = element.tagName.toUpperCase(); // Normalize to uppercase
-            return tagName === 'YTD-COMPACT-VIDEO-RENDERER' || // Sidebar videos
+            const tagName = element.tagName.toUpperCase();
+            return tagName === 'YTD-COMPACT-VIDEO-RENDERER' ||
                 tagName === 'YT-LOCKUP-VIEW-MODEL';
         }
 
@@ -322,7 +308,7 @@
     }
 
     function escapeRegExp(string) {
-        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
     function processThumbnail(thumbnailElement) {
@@ -342,7 +328,6 @@
 
         const videoId = getVideoId(parentElement);
 
-        // Try primary selector first, then fallback
         let videoTitleElement = parentElement.querySelector(CONFIG.SELECTORS.VIDEO_TITLE);
         if (!videoTitleElement) {
             videoTitleElement = parentElement.querySelector(CONFIG.SELECTORS.VIDEO_TITLE_FALLBACK);
@@ -364,8 +349,9 @@
             return;
         }
 
-        // Check filtered terms
+        // Check filtered terms - only if there are actual terms to filter
         for (const term of FILTERED_TITLE_TERMS) {
+            if (term.length === 0) continue; // Skip empty strings
             const escapedTerm = escapeRegExp(term);
             const regex = new RegExp(`(?<![\\p{L}\\p{N}_])${escapedTerm}(?![\\p{L}\\p{N}_])`, 'iu');
 
@@ -376,7 +362,6 @@
             }
         }
 
-        // Get channel name using updated selectors
         let channelName = null;
         const metadataRows = parentElement.querySelectorAll(CONFIG.SELECTORS.METADATA_ROWS);
 
@@ -403,8 +388,9 @@
 
         debugLog(`   Found - Channel: "${channelName}", Video ID: "${videoId}"`);
 
-        // Check filtered channel terms
+        // Check filtered channel terms - only if there are actual terms to filter
         for (const term of FILTERED_CHANNEL_TERMS) {
+            if (term.length === 0) continue; // Skip empty strings
             const escapedTerm = escapeRegExp(term);
             const regex = new RegExp(`(?<![\\p{L}\\p{N}_])${escapedTerm}(?![\\p{L}\\p{N}_])`, 'iu');
             if (regex.test(channelName)) {
@@ -484,7 +470,6 @@
     }
 
     function hideShortsShelf() {
-        // This code will run on homepage and watch pages
         const pathname = window.location.pathname;
         const isHomePage = pathname === '/';
         const isWatchPage = pathname === '/watch';
@@ -493,7 +478,6 @@
             return;
         }
 
-        // Hide Shorts shelf on homepage (ytd-rich-shelf-renderer with "Shorts" title)
         if (isHomePage) {
             const shelves = document.querySelectorAll('ytd-rich-shelf-renderer');
             shelves.forEach(shelf => {
@@ -505,7 +489,6 @@
             });
         }
 
-        // Hide Shorts shelf on watch pages (ytd-reel-shelf-renderer)
         if (isWatchPage) {
             const reelShelves = document.querySelectorAll('ytd-reel-shelf-renderer');
             reelShelves.forEach(shelf => {
@@ -514,9 +497,10 @@
             });
         }
     }
-    
+
     function observeDOMChanges() {
-        // Disconnect existing observer if any
+        timingLog('observeDOMChanges called', '#0066FF');
+
         if (currentObserver) {
             currentObserver.disconnect();
             currentObserver = null;
@@ -528,15 +512,15 @@
                 if (mutation.type === 'childList') {
                     mutation.addedNodes.forEach((node) => {
                         if (node.nodeType === Node.ELEMENT_NODE) {
-                            if (node.matches(getVideoContainerSelectors())) {
+                            if (node.matches && node.matches(getVideoContainerSelectors())) {
                                 processThumbnail(node);
-                            } else {
+                            } else if (node.querySelectorAll) {
                                 node.querySelectorAll(getVideoContainerSelectors()).forEach(processThumbnail);
                             }
                         }
                     });
                 } else if (mutation.type === 'attributes' && mutation.target.id === 'progress') {
-                    const thumbnailElement = mutation.target.closest(VIDEO_CONTAINER_SELECTORS);
+                    const thumbnailElement = mutation.target.closest(getVideoContainerSelectors());
                     if (thumbnailElement) {
                         processThumbnail(thumbnailElement);
                     }
@@ -551,25 +535,29 @@
             attributeFilter: ['style'],
             attributeOldValue: true
         });
+
+        timingLog('MutationObserver started', '#0066FF');
     }
 
     function processExistingThumbnails() {
+        timingLog('processExistingThumbnails called', '#FF00FF');
+
         const thumbnails = document.querySelectorAll(getVideoContainerSelectors());
         debugLog('Processing existing thumbnails:', thumbnails.length);
         thumbnails.forEach(processThumbnail);
     }
 
-    // Enhanced processing function with retry mechanism
     function processPageWithRetry(maxRetries = 3, delay = 500) {
+        timingLog(`processPageWithRetry called (maxRetries=${maxRetries}, delay=${delay})`, '#FF00FF');
         let retryCount = 0;
 
         function attemptProcess() {
             const thumbnails = document.querySelectorAll(getVideoContainerSelectors());
-            debugLog(`Attempt ${retryCount + 1}: Found ${thumbnails.length} thumbnails`);
+            timingLog(`Retry attempt ${retryCount + 1}: Found ${thumbnails.length} thumbnails`, '#FF00FF');
 
             if (thumbnails.length > 0 || retryCount >= maxRetries) {
                 processExistingThumbnails();
-                observeDOMChanges(); // Re-establish observer
+                observeDOMChanges();
             } else {
                 retryCount++;
                 setTimeout(attemptProcess, delay);
@@ -591,12 +579,11 @@
 
     function parseDateFromMetadata(metadataText) {
         const now = new Date();
-        // MODIFIED: Made "Streamed " optional at the beginning of the regex
         const match = metadataText.match(/^(Streamed\s+)?(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago$/i);
 
         if (match) {
-            const value = parseInt(match[2], 10); // The numeric value is now in the 2nd capture group
-            const unit = match[3]; // The time unit is now in the 3rd capture group
+            const value = parseInt(match[2], 10);
+            const unit = match[3];
 
             switch (unit) {
                 case 'second':
@@ -610,7 +597,6 @@
                 case 'week':
                     return new Date(now - value * 7 * 86400000);
                 case 'month':
-                    // Note: setMonth can have edge cases, but is generally fine for this purpose
                     return new Date(now.setMonth(now.getMonth() - value));
                 case 'year':
                     return new Date(now.setFullYear(now.getFullYear() - value));
@@ -620,13 +606,8 @@
         return null;
     }
 
-    function isWithinDateRange(videoDate, startDate, endDate) {
-        return videoDate >= startDate && videoDate <= endDate;
-    }
-
     function parseViewCount(viewText) {
         const lowerViewText = viewText.toLowerCase();
-        // First, try to match with k, m, b units
         let match = lowerViewText.match(/([\d,.]+)\s*([kmb])/);
         if (match) {
             const num = parseFloat(match[1].replace(/,/g, ''));
@@ -639,34 +620,20 @@
             }
             return isNaN(num) ? 0 : num * multiplier;
         } else {
-            // If no k, m, b unit, try to parse directly as a number
-            // Remove "view", "views", and commas, then parse
-            const numericValueMatch = lowerViewText.match(/(\d[\d,.]*)/); // Capture sequence of digits and commas/dots
+            const numericValueMatch = lowerViewText.match(/(\d[\d,.]*)/);
             if (numericValueMatch && numericValueMatch[1]) {
                 const num = parseFloat(numericValueMatch[1].replace(/,/g, ''));
                 return isNaN(num) ? 0 : num;
             }
         }
-        return 0; // Default if no match found
+        return 0;
     }
 
-    function injectCSS() {
-        // Remove existing style if it exists
-        const existingStyle = document.getElementById('youtube-filter-css');
-        if (existingStyle) {
-            existingStyle.remove();
-        }
+    // ===== CSS MANAGEMENT - FIXED =====
+    // The key fix: NEVER remove CSS, only add/update it
 
-        // Only inject CSS if we should run on current page
-        if (!shouldRunOnCurrentPage()) {
-            debugLog('Not injecting CSS - not on target page');
-            return;
-        }
-
-        const style = document.createElement('style');
-        style.id = 'youtube-filter-css'; // Add ID for easy removal
-        const selectors = getVideoContainerSelectors();
-        style.textContent = `
+    function getHidingCSS(selectors) {
+        return `
     /* Hide all video containers by default until processed */
     ${selectors} {
         visibility: hidden !important;
@@ -704,74 +671,154 @@
         min-height: 0 !important;
     }
 `;
-        document.head.appendChild(style);
-        debugLog('CSS injected for target page');
+    }
+
+    function ensureCSS() {
+        const pageType = getCurrentPageType();
+
+        // Don't inject CSS for non-target pages
+        if (pageType === 'CHANNELS' || pageType === 'OTHER') {
+            return;
+        }
+
+        const selectors = getVideoContainerSelectors();
+        const existingStyle = document.getElementById('youtube-filter-css');
+
+        if (existingStyle) {
+            // CSS already exists - check if it needs updating for different page type
+            if (cssInjectedForPage !== pageType) {
+                // Update the CSS content without removing the element
+                existingStyle.textContent = getHidingCSS(selectors);
+                cssInjectedForPage = pageType;
+                timingLog(`CSS updated for page type: ${pageType}`, '#00CCCC');
+            }
+            // Otherwise, CSS is already correct, do nothing
+            return;
+        }
+
+        // No CSS exists yet, create it
+        const targetElement = document.head || document.documentElement;
+        if (!targetElement) {
+            timingLog('WARNING: No target element for CSS injection!', '#FF0000');
+            return;
+        }
+
+        const style = document.createElement('style');
+        style.id = 'youtube-filter-css';
+        style.textContent = getHidingCSS(selectors);
+        targetElement.appendChild(style);
+        cssInjectedForPage = pageType;
+        timingLog(`CSS injected for page type: ${pageType}`, '#00CCCC');
     }
 
     function removeCSS() {
         const existingStyle = document.getElementById('youtube-filter-css');
         if (existingStyle) {
             existingStyle.remove();
-            debugLog('CSS removed - not on target page');
+            cssInjectedForPage = null;
+            timingLog('CSS removed - not on target page', '#00CCCC');
         }
+    }
+
+    // ===== EARLY CSS INJECTION =====
+    // Inject CSS as early as possible, before any content loads
+    function injectEarlyCSS() {
+        timingLog('injectEarlyCSS called', '#FFCC00');
+
+        // Use broad selectors that cover both HOME and WATCH pages
+        const broadSelectors = 'ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer, yt-lockup-view-model';
+
+        const css = `
+    /* EARLY HIDE: Hide all video containers by default */
+    ${broadSelectors} {
+        visibility: hidden !important;
+        opacity: 0 !important;
+    }
+
+    /* Show processed videos that passed the filter */
+    ${broadSelectors}[data-processed="show"] {
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+
+    /* Keep hidden videos hidden */
+    [data-hide-reason] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        height: 0 !important;
+        max-height: 0 !important;
+        width: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        overflow: hidden !important;
+        position: absolute !important;
+        left: -9999px !important;
+        top: -9999px !important;
+        pointer-events: none !important;
+    }
+
+    yt-lockup-view-model[data-hide-reason] {
+        display: none !important;
+        height: 0 !important;
+        min-height: 0 !important;
+    }
+`;
+
+        // Try to inject into head first
+        if (document.head) {
+            const style = document.createElement('style');
+            style.id = 'youtube-filter-css';
+            style.textContent = css;
+            document.head.appendChild(style);
+            cssInjectedForPage = 'EARLY';
+            timingLog('Early CSS injected into head', '#FFCC00');
+            return;
+        }
+
+        // If head doesn't exist, inject into documentElement
+        if (document.documentElement) {
+            const style = document.createElement('style');
+            style.id = 'youtube-filter-css';
+            style.textContent = css;
+            document.documentElement.appendChild(style);
+            cssInjectedForPage = 'EARLY';
+            timingLog('Early CSS injected into documentElement', '#FFCC00');
+
+            // Move to head when it becomes available
+            const headObserver = new MutationObserver((mutations, obs) => {
+                if (document.head && !document.head.contains(style)) {
+                    document.head.appendChild(style);
+                    timingLog('Moved CSS from documentElement to head', '#FFCC00');
+                    obs.disconnect();
+                }
+            });
+            headObserver.observe(document.documentElement, { childList: true, subtree: true });
+            return;
+        }
+
+        timingLog('WARNING: Cannot inject early CSS - no target element', '#FF0000');
     }
 
     function monitorHiddenElements() {
         setInterval(() => {
             const hiddenElements = document.querySelectorAll('[data-hide-reason]');
             hiddenElements.forEach(element => {
-                // CORRECTED: Use getComputedStyle to check the final, actual display property.
-                // This will correctly see that the element is hidden by our CSS rule.
                 if (window.getComputedStyle(element).display !== 'none') {
                     const reason = element.getAttribute('data-hide-reason');
-                    // The element has reappeared despite the attribute. Log it and re-hide.
-                    // We don't need to call hideElement again since the attribute is already there.
-                    // The browser should re-apply the CSS rule.
                     debugLog(`Force re-hiding element that reappeared: ${reason}`);
                 }
             });
-        }, 1000); // Check every second
-    }
-
-    function observeFirstVideo() {
-        const observer = new MutationObserver((mutations, obs) => {
-            // Use CONFIG selectors
-            const primaryVideo = document.querySelector(CONFIG.SELECTORS.WATCH_CONTAINER);
-            const sidebarRecommendations = document.querySelectorAll(CONFIG.SELECTORS.SIDEBAR_RECOMMENDATIONS);
-
-            if (primaryVideo && sidebarRecommendations.length > 0) {
-                debugLog('Main video container and recommendations detected, processing...');
-                setTimeout(() => {
-                    processExistingThumbnails();
-                    observeDOMChanges();
-                }, 500);
-                obs.disconnect();
-            }
-        });
-
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-
-        setTimeout(() => {
-            observer.disconnect();
-            if (shouldRunOnCurrentPage()) {
-                debugLog('Fallback processing after observer timeout');
-                processExistingThumbnails();
-                observeDOMChanges();
-            }
-        }, 10000);
+        }, 1000);
     }
 
     function convertLiveUrlToWatchUrl(url) {
-        // Convert /live/VIDEO_ID to /watch?v=VIDEO_ID
         const liveMatch = url.match(/\/live\/([^?]+)/);
         if (liveMatch) {
             const videoId = liveMatch[1];
             let newUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-            // Extract timestamp if present
             const timeMatch = url.match(/[?&]t=(\d+)/);
             if (timeMatch) {
                 newUrl += `&t=${timeMatch[1]}s`;
@@ -794,43 +841,49 @@
     }
 
     function init() {
+        timingLog('init() called', '#00FF00');
+
         loadStoredSubscribedChannels();
         monitorHiddenElements();
         convertCurrentUrl();
 
         if (window.location.pathname === '/feed/channels') {
             debugLog('On channels page, fetching subscribed channels');
-            removeCSS(); // Make sure CSS is not active
+            removeCSS();
             fetchSubscribedChannels();
         } else if (shouldRunOnCurrentPage()) {
             debugLog('Processing thumbnails');
-            injectCSS(); // Inject CSS for target pages
+            ensureCSS(); // Use ensureCSS instead of injectCSS
             processPageWithRetry();
         } else {
             debugLog('Not on a target page, script inactive');
-            removeCSS(); // Make sure CSS is not active
+            removeCSS();
         }
     }
 
-    // REPLACE your existing 'yt-navigate-finish' listener with this one
+    // ===== IMMEDIATE EARLY CSS INJECTION =====
+    // This runs IMMEDIATELY when the script executes
+    injectEarlyCSS();
+
+    // ===== EVENT LISTENERS =====
+
     document.addEventListener('yt-navigate-finish', (event) => {
         const currentUrl = event.detail?.url || window.location.href;
-        debugLog('Navigation finished, URL:', currentUrl);
+        timingLog(`yt-navigate-finish event fired, URL: ${currentUrl}`, '#FF6600');
 
         convertCurrentUrl();
 
         if (currentUrl.includes('/feed/channels')) {
-            removeCSS(); // Remove CSS for channels page
+            removeCSS();
             fetchSubscribedChannels();
         } else if (shouldRunOnCurrentPage()) {
-            injectCSS(); // Inject CSS for target pages
-            // Use a more robust approach with multiple retry attempts
+            ensureCSS(); // Use ensureCSS - will update if needed, won't flash
             setTimeout(() => {
                 debugLog('Starting post-navigation processing...');
-                processPageWithRetry(8, 500); // Increased retries and delay
-            }, 1000); // Wait longer before starting
+                processPageWithRetry(8, 500);
+            }, 100); // Reduced delay since CSS is already in place
         } else {
-            removeCSS(); // Remove CSS for non-target pages
+            removeCSS();
             debugLog('Navigated to a non-target page, script inactive');
             if (currentObserver) {
                 currentObserver.disconnect();
@@ -839,17 +892,14 @@
         }
     });
 
-    // Also listen for the start of navigation to prepare
     document.addEventListener('yt-navigate-start', () => {
-        debugLog('Navigation starting...');
-        // Disconnect observer during navigation
+        timingLog('yt-navigate-start event fired', '#FF6600');
         if (currentObserver) {
             currentObserver.disconnect();
             currentObserver = null;
         }
     });
 
-    // Additional observer for specific YouTube content updates
     const ytAppObserver = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
             if (mutation.type === 'attributes' &&
@@ -862,20 +912,37 @@
         }
     });
 
-    // Observe the YouTube app element for changes
-    const ytApp = document.querySelector('ytd-app');
-    if (ytApp) {
-        ytAppObserver.observe(ytApp, {
-            attributes: true,
-            attributeFilter: ['video-id', 'active']
+    // Wait for ytd-app to exist before observing
+    function observeYtApp() {
+        const ytApp = document.querySelector('ytd-app');
+        if (ytApp) {
+            ytAppObserver.observe(ytApp, {
+                attributes: true,
+                attributeFilter: ['video-id', 'active']
+            });
+        } else {
+            // Retry if ytd-app doesn't exist yet
+            setTimeout(observeYtApp, 100);
+        }
+    }
+
+    timingLog(`Document readyState: ${document.readyState}`, '#888888');
+
+    if (document.readyState === 'complete') {
+        timingLog('Document already complete, calling init()', '#00FF00');
+        init();
+        observeYtApp();
+    } else {
+        document.addEventListener('DOMContentLoaded', () => {
+            timingLog('DOMContentLoaded event fired', '#00FF00');
+            observeYtApp();
+        });
+
+        window.addEventListener('load', () => {
+            timingLog('window load event fired', '#00FF00');
+            init();
         });
     }
 
-    if (document.readyState === 'complete') {
-        init();
-    } else {
-        window.addEventListener('load', init);
-    }
-
-    debugLog('Script initialized');
+    timingLog('Script setup complete', '#888888');
 })();
