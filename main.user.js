@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @author       BadisG
 // @version      8.4
-// @description  Count and hide YouTube thumbnails after 10 views, excluding subscribed channels, and hide playlist, live, and watched thumbnails.
+// @description  Count and hide YouTube thumbnails after 10 views, excluding subscribed channels, and hide playlist, live, and watched thumbnails. Added duration filters.
 // @match        https://www.youtube.com/*
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -19,9 +19,10 @@
     const CONFIG = {
         DEBUG: false,
         THRESHOLD: 10,
-        MINIMUM_VIEWS: 0, // Add a minimum views threshold here
+        MINIMUM_VIEWS: 1000,
+        MINIMUM_DURATION: null, // Example: 180 -> 3 minutes
+        MAXIMUM_DURATION: null,
 
-        // Date filtering (optional: leave empty/null to disable)
         BEFORE_DATE: null, // exemple: "2024-04-16"
         AFTER_DATE: null, // exemple: "2006-05-20"
 
@@ -53,6 +54,7 @@
             WATCH_CONTAINER: 'ytd-watch-flexy',
             SIDEBAR_RECOMMENDATIONS: 'ytd-compact-video-renderer',
             YT_LOCKUP_CONTENT_TYPE: '[ytb-content-type]',
+            DURATION_BADGE: '.yt-badge-shape__text',
         }
     };
 
@@ -456,6 +458,29 @@
             return;
         }
 
+// Check video duration
+        const durationBadge = parentElement.querySelector(CONFIG.SELECTORS.DURATION_BADGE);
+        if (durationBadge) {
+            const durationText = durationBadge.textContent.trim();
+            const durationSeconds = parseDuration(durationText);
+
+            debugLog(`   Duration: ${durationText} (${durationSeconds} seconds)`);
+
+            if (durationSeconds > 0) {
+                if (CONFIG.MINIMUM_DURATION && durationSeconds < CONFIG.MINIMUM_DURATION) {
+                    logHiding(`Below minimum duration: ${durationText} (${durationSeconds}s < ${CONFIG.MINIMUM_DURATION}s)`, videoTitle);
+                    hideElement(parentElement, `Below minimum duration: ${durationText}`);
+                    return;
+                }
+
+                if (CONFIG.MAXIMUM_DURATION && durationSeconds > CONFIG.MAXIMUM_DURATION) {
+                    logHiding(`Above maximum duration: ${durationText} (${durationSeconds}s > ${CONFIG.MAXIMUM_DURATION}s)`, videoTitle);
+                    hideElement(parentElement, `Above maximum duration: ${durationText}`);
+                    return;
+                }
+            }
+        }
+
         let viewCount = GM_getValue(videoId, 0) + 1;
         GM_setValue(videoId, viewCount);
         debugLog(`View count: ${viewCount}/${Threshold}`);
@@ -629,8 +654,24 @@
         return 0;
     }
 
-    // ===== CSS MANAGEMENT - FIXED =====
-    // The key fix: NEVER remove CSS, only add/update it
+    function parseDuration(durationText) {
+        if (!durationText) return 0;
+
+        const parts = durationText.trim().split(':').map(p => parseInt(p, 10));
+
+        if (parts.length === 3) {
+            // Format: HH:MM:SS (e.g., "1:41:13")
+            return parts[0] * 3600 + parts[1] * 60 + parts[2];
+        } else if (parts.length === 2) {
+            // Format: MM:SS (e.g., "5:14")
+            return parts[0] * 60 + parts[1];
+        } else if (parts.length === 1) {
+            // Format: SS (e.g., "45")
+            return parts[0];
+        }
+
+        return 0;
+    }
 
     function getHidingCSS(selectors) {
         return `
