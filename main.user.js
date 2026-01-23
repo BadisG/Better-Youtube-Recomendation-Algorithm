@@ -458,25 +458,33 @@
             return;
         }
 
-// Check video duration
+        // Check video duration (skip for music videos)
         const durationBadge = parentElement.querySelector(CONFIG.SELECTORS.DURATION_BADGE);
         if (durationBadge) {
             const durationText = durationBadge.textContent.trim();
             const durationSeconds = parseDuration(durationText);
-
-            debugLog(`   Duration: ${durationText} (${durationSeconds} seconds)`);
-
-            if (durationSeconds > 0) {
-                if (CONFIG.MINIMUM_DURATION && durationSeconds < CONFIG.MINIMUM_DURATION) {
-                    logHiding(`Below minimum duration: ${durationText} (${durationSeconds}s < ${CONFIG.MINIMUM_DURATION}s)`, videoTitle);
-                    hideElement(parentElement, `Below minimum duration: ${durationText}`);
-                    return;
-                }
-
-                if (CONFIG.MAXIMUM_DURATION && durationSeconds > CONFIG.MAXIMUM_DURATION) {
-                    logHiding(`Above maximum duration: ${durationText} (${durationSeconds}s > ${CONFIG.MAXIMUM_DURATION}s)`, videoTitle);
-                    hideElement(parentElement, `Above maximum duration: ${durationText}`);
-                    return;
+            
+            // Check if this is a music video by looking for the music icon
+            const badgeShape = durationBadge.closest('badge-shape');
+            const hasMusicIcon = badgeShape && badgeShape.querySelector('.yt-badge-shape__icon');
+            
+            if (hasMusicIcon) {
+                debugLog(`   Music video detected (has music icon), skipping duration filter`);
+            } else {
+                debugLog(`   Duration: ${durationText} (${durationSeconds} seconds)`);
+        
+                if (durationSeconds > 0) {
+                    if (CONFIG.MINIMUM_DURATION && durationSeconds < CONFIG.MINIMUM_DURATION) {
+                        logHiding(`Below minimum duration: ${durationText} (${durationSeconds}s < ${CONFIG.MINIMUM_DURATION}s)`, videoTitle);
+                        hideElement(parentElement, `Below minimum duration: ${durationText}`);
+                        return;
+                    }
+        
+                    if (CONFIG.MAXIMUM_DURATION && durationSeconds > CONFIG.MAXIMUM_DURATION) {
+                        logHiding(`Above maximum duration: ${durationText} (${durationSeconds}s > ${CONFIG.MAXIMUM_DURATION}s)`, videoTitle);
+                        hideElement(parentElement, `Above maximum duration: ${durationText}`);
+                        return;
+                    }
                 }
             }
         }
