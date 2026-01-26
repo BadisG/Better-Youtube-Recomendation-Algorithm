@@ -50,7 +50,7 @@
             SUBSCRIPTION_NAMES: 'ytd-channel-name yt-formatted-string#text',
             PLAYLIST_INDICATORS: 'ytd-compact-playlist-renderer, ytd-item-section-renderer',
             LIVE_BADGES: '[aria-label="LIVE"], .badge-style-type-live-now-alternate, badge-shape.badge-shape-wiz--live, .yt-badge-shape-wiz__text[aria-label="LIVE"]',
-            PROGRESS_BARS: '#progress, [class*="progress" i]',
+            PROGRESS_BARS: '#progress, [class*="progress" i], yt-thumbnail-overlay-progress-bar-view-model, [class*="WatchedProgress"]',
             WATCH_CONTAINER: 'ytd-watch-flexy',
             SIDEBAR_RECOMMENDATIONS: 'ytd-compact-video-renderer',
             YT_LOCKUP_CONTENT_TYPE: '[ytb-content-type]',
