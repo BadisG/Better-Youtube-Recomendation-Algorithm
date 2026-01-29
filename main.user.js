@@ -240,21 +240,35 @@
                 return { isNormal: false, reason: `yt-lockup-view-model is a ${contentType}` };
             }
         }
-
+    
         if (element.matches(CONFIG.SELECTORS.PLAYLIST_INDICATORS)) {
             return { isNormal: false, reason: 'Playlist element detected' };
         }
-
+    
         const hasLiveBadge = element.querySelector(CONFIG.SELECTORS.LIVE_BADGES);
         if (hasLiveBadge) {
             return { isNormal: false, reason: 'Live stream detected' };
         }
-
+    
+        // More comprehensive progress bar detection
         const hasProgressBar = element.querySelector(CONFIG.SELECTORS.PROGRESS_BARS);
+        
+        // Additional check: look for the progress bar with visible width
+        const progressBarElement = element.querySelector('yt-thumbnail-overlay-progress-bar-view-model');
+        if (progressBarElement) {
+            const progressSegment = progressBarElement.querySelector('.ytThumbnailOverlayProgressBarHostWatchedProgressBarSegment');
+            if (progressSegment) {
+                const width = progressSegment.style.width;
+                if (width && parseFloat(width) > 0) {
+                    return { isNormal: false, reason: `Already watched (${width} progress)` };
+                }
+            }
+        }
+        
         if (hasProgressBar) {
             return { isNormal: false, reason: 'Already watched' };
         }
-
+    
         return { isNormal: true, reason: 'Normal video' };
     }
 
