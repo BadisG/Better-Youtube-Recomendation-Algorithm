@@ -19,7 +19,7 @@
     const CONFIG = {
         DEBUG: false,
         THRESHOLD: 10,
-        MINIMUM_VIEWS: 1000,
+        MINIMUM_VIEWS: null,
         MINIMUM_DURATION: null, // Example: 180 -> 3 minutes
         MAXIMUM_DURATION: null,
 
