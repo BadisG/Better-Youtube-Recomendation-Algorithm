@@ -2,7 +2,7 @@
 // @name         Better Youtube Recommendation Algorithm
 // @namespace    http://tampermonkey.net/
 // @author       BadisG
-// @version      8.4
+// @version      8.5
 // @description  Count and hide YouTube thumbnails after 10 views, excluding subscribed channels, and hide playlist, live, and watched thumbnails. Added duration filters.
 // @match        https://www.youtube.com/*
 // @grant        GM_getValue
@@ -240,35 +240,71 @@
                 return { isNormal: false, reason: `yt-lockup-view-model is a ${contentType}` };
             }
         }
-    
+
         if (element.matches(CONFIG.SELECTORS.PLAYLIST_INDICATORS)) {
             return { isNormal: false, reason: 'Playlist element detected' };
         }
-    
+
         const hasLiveBadge = element.querySelector(CONFIG.SELECTORS.LIVE_BADGES);
         if (hasLiveBadge) {
             return { isNormal: false, reason: 'Live stream detected' };
         }
-    
-        // More comprehensive progress bar detection
-        const hasProgressBar = element.querySelector(CONFIG.SELECTORS.PROGRESS_BARS);
-        
-        // Additional check: look for the progress bar with visible width
+
+        // COMPREHENSIVE progress bar detection - check multiple methods
+        // Method 1: Check for progress bar element with visible width
         const progressBarElement = element.querySelector('yt-thumbnail-overlay-progress-bar-view-model');
         if (progressBarElement) {
-            const progressSegment = progressBarElement.querySelector('.ytThumbnailOverlayProgressBarHostWatchedProgressBarSegment');
-            if (progressSegment) {
+            // Check for the progress segment div (both legacy and new class names)
+            const progressSegments = progressBarElement.querySelectorAll(
+                '.ytThumbnailOverlayProgressBarHostWatchedProgressBarSegment, ' +
+                '[class*="WatchedProgressBarSegment"]'
+            );
+
+            for (const progressSegment of progressSegments) {
                 const width = progressSegment.style.width;
-                if (width && parseFloat(width) > 0) {
-                    return { isNormal: false, reason: `Already watched (${width} progress)` };
+                // If width is set and greater than 0%, it's been watched
+                if (width && width.trim() !== '' && width !== '0%' && width !== '0px') {
+                    const widthValue = parseFloat(width);
+                    if (widthValue > 0) {
+                        debugLog(`Found watched progress bar with width: ${width}`);
+                        return { isNormal: false, reason: `Already watched (${width} progress)` };
+                    }
+                }
+            }
+
+            // Also check if the progress bar itself is visible with any visible elements
+            const progressBars = progressBarElement.querySelectorAll(
+                '.ytThumbnailOverlayProgressBarHostWatchedProgressBar, ' +
+                '[class*="WatchedProgressBar"]'
+            );
+
+            for (const progressBar of progressBars) {
+                const computedStyle = window.getComputedStyle(progressBar);
+                if (computedStyle.display !== 'none' && computedStyle.visibility !== 'hidden') {
+                    // If progress bar is visible, check its children for width
+                    const children = progressBar.querySelectorAll('[style*="width"]');
+                    for (const child of children) {
+                        const width = child.style.width;
+                        if (width && width !== '0%' && width !== '0px' && parseFloat(width) > 0) {
+                            debugLog(`Found watched progress in visible bar: ${width}`);
+                            return { isNormal: false, reason: `Already watched (${width} progress)` };
+                        }
+                    }
                 }
             }
         }
-        
+
+        // Method 2: General progress bar selector check (fallback)
+        const hasProgressBar = element.querySelector(CONFIG.SELECTORS.PROGRESS_BARS);
         if (hasProgressBar) {
-            return { isNormal: false, reason: 'Already watched' };
+            // Do a final check to make sure it actually has visible progress
+            const style = window.getComputedStyle(hasProgressBar);
+            if (style.display !== 'none' && style.visibility !== 'hidden') {
+                debugLog(`Found generic progress bar element`);
+                return { isNormal: false, reason: 'Already watched' };
+            }
         }
-    
+
         return { isNormal: true, reason: 'Normal video' };
     }
 
@@ -477,23 +513,23 @@
         if (durationBadge) {
             const durationText = durationBadge.textContent.trim();
             const durationSeconds = parseDuration(durationText);
-            
+
             // Check if this is a music video by looking for the music icon
             const badgeShape = durationBadge.closest('badge-shape');
             const hasMusicIcon = badgeShape && badgeShape.querySelector('.yt-badge-shape__icon');
-            
+
             if (hasMusicIcon) {
                 debugLog(`   Music video detected (has music icon), skipping duration filter`);
             } else {
                 debugLog(`   Duration: ${durationText} (${durationSeconds} seconds)`);
-        
+
                 if (durationSeconds > 0) {
                     if (CONFIG.MINIMUM_DURATION && durationSeconds < CONFIG.MINIMUM_DURATION) {
                         logHiding(`Below minimum duration: ${durationText} (${durationSeconds}s < ${CONFIG.MINIMUM_DURATION}s)`, videoTitle);
                         hideElement(parentElement, `Below minimum duration: ${durationText}`);
                         return;
                     }
-        
+
                     if (CONFIG.MAXIMUM_DURATION && durationSeconds > CONFIG.MAXIMUM_DURATION) {
                         logHiding(`Above maximum duration: ${durationText} (${durationSeconds}s > ${CONFIG.MAXIMUM_DURATION}s)`, videoTitle);
                         hideElement(parentElement, `Above maximum duration: ${durationText}`);
