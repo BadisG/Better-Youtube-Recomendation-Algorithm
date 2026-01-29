@@ -602,10 +602,32 @@
                             }
                         }
                     });
-                } else if (mutation.type === 'attributes' && mutation.target.id === 'progress') {
-                    const thumbnailElement = mutation.target.closest(getVideoContainerSelectors());
-                    if (thumbnailElement) {
-                        processThumbnail(thumbnailElement);
+                } else if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                    const target = mutation.target;
+
+                    // Check if this is a progress bar segment getting its width set
+                    if (target.classList &&
+                        (target.classList.contains('ytThumbnailOverlayProgressBarHostWatchedProgressBarSegment') ||
+                         target.className.includes('WatchedProgressBarSegment'))) {
+
+                        const width = target.style.width;
+                        if (width && width !== '0%' && width !== '0px' && parseFloat(width) > 0) {
+                            const thumbnailElement = target.closest(getVideoContainerSelectors());
+                            if (thumbnailElement && thumbnailElement.getAttribute('data-processed') === 'show') {
+                                debugLog(`Progress bar width changed to ${width}, re-checking element`);
+                                // Remove the processed attribute so it can be re-evaluated
+                                thumbnailElement.removeAttribute('data-processed');
+                                processThumbnail(thumbnailElement);
+                            }
+                        }
+                    }
+
+                    // Legacy support for #progress elements
+                    if (target.id === 'progress') {
+                        const thumbnailElement = target.closest(getVideoContainerSelectors());
+                        if (thumbnailElement) {
+                            processThumbnail(thumbnailElement);
+                        }
                     }
                 }
             });
@@ -641,6 +663,23 @@
             if (thumbnails.length > 0 || retryCount >= maxRetries) {
                 processExistingThumbnails();
                 observeDOMChanges();
+
+                // Re-check after a delay to catch progress bars that load late
+                setTimeout(() => {
+                    debugLog('Running delayed re-check for progress bars...');
+                    const shownVideos = document.querySelectorAll('[data-processed="show"]');
+                    shownVideos.forEach(element => {
+                        const progressSegment = element.querySelector('.ytThumbnailOverlayProgressBarHostWatchedProgressBarSegment, [class*="WatchedProgressBarSegment"]');
+                        if (progressSegment) {
+                            const width = progressSegment.style.width;
+                            if (width && width !== '0%' && width !== '0px' && parseFloat(width) > 0) {
+                                debugLog(`Found late-loaded progress bar (${width}), re-processing`);
+                                element.removeAttribute('data-processed');
+                                processThumbnail(element);
+                            }
+                        }
+                    });
+                }, 1500);
             } else {
                 retryCount++;
                 setTimeout(attemptProcess, delay);
