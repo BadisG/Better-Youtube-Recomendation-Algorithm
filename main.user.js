@@ -2,7 +2,7 @@
 // @name         Better Youtube Recommendation Algorithm
 // @namespace    http://tampermonkey.net/
 // @author       BadisG
-// @version      8.5
+// @version      8.6
 // @description  Count and hide YouTube thumbnails after 10 views, excluding subscribed channels, and hide playlist, live, and watched thumbnails. Added duration filters.
 // @match        https://www.youtube.com/*
 // @grant        GM_getValue
@@ -26,7 +26,6 @@
         BEFORE_DATE: null, // exemple: "2024-04-16"
         AFTER_DATE: null, // exemple: "2006-05-20"
 
-        // Filter terms
         FILTERED_TITLE_TERMS: ['aaaa', 'bbbb'],
         FILTERED_CHANNEL_TERMS: ['cccc', 'dddd'],
 
@@ -50,11 +49,13 @@
             SUBSCRIPTION_NAMES: 'ytd-channel-name yt-formatted-string#text',
             PLAYLIST_INDICATORS: 'ytd-compact-playlist-renderer, ytd-item-section-renderer',
             LIVE_BADGES: '[aria-label="LIVE"], .badge-style-type-live-now-alternate, badge-shape.badge-shape-wiz--live, .yt-badge-shape-wiz__text[aria-label="LIVE"]',
-            PROGRESS_BARS: '#progress, [class*="progress" i], yt-thumbnail-overlay-progress-bar-view-model, [class*="WatchedProgress"]',
             WATCH_CONTAINER: 'ytd-watch-flexy',
             SIDEBAR_RECOMMENDATIONS: 'ytd-compact-video-renderer',
             YT_LOCKUP_CONTENT_TYPE: '[ytb-content-type]',
             DURATION_BADGE: '.yt-badge-shape__text',
+            // Updated progress bar selectors
+            PROGRESS_BAR_CONTAINER: 'yt-thumbnail-overlay-progress-bar-view-model',
+            PROGRESS_BAR_SEGMENT: '.ytThumbnailOverlayProgressBarHostWatchedProgressBarSegment, [class*="WatchedProgressBarSegment"]',
         }
     };
 
@@ -67,8 +68,8 @@
     const FILTERED_TITLE_TERMS = CONFIG.FILTERED_TITLE_TERMS;
     const FILTERED_CHANNEL_TERMS = CONFIG.FILTERED_CHANNEL_TERMS;
 
-    // Track CSS state - IMPORTANT: Don't remove CSS, just update if needed
-    let cssInjectedForPage = null; // Track which page type CSS was injected for
+    let cssInjectedForPage = null;
+    let progressBarCheckInterval = null;
 
     // ===== UTILITY FUNCTIONS =====
     function debugLog(...args) {
@@ -106,6 +107,120 @@
         if (pathname === '/watch') return 'WATCH';
         if (pathname === '/feed/channels') return 'CHANNELS';
         return 'OTHER';
+    }
+
+    // ===== PROGRESS BAR DETECTION =====
+
+    /**
+     * Check if an element has a watched progress bar with visible progress
+     * Returns { hasProgress: boolean, width: string|null }
+     */
+    function checkForWatchedProgress(element) {
+        // Method 1: Check for the new style progress bar container
+        const progressBarContainer = element.querySelector(CONFIG.SELECTORS.PROGRESS_BAR_CONTAINER);
+        if (progressBarContainer) {
+            // Look for progress segments with width set
+            const progressSegments = progressBarContainer.querySelectorAll(CONFIG.SELECTORS.PROGRESS_BAR_SEGMENT);
+
+            for (const segment of progressSegments) {
+                const width = segment.style.width;
+                if (width && width.trim() !== '' && width !== '0%' && width !== '0px') {
+                    const widthValue = parseFloat(width);
+                    if (!isNaN(widthValue) && widthValue > 0) {
+                        return { hasProgress: true, width: width };
+                    }
+                }
+            }
+
+            // Also check for any div with style containing width inside the progress bar
+            const allDivsWithWidth = progressBarContainer.querySelectorAll('div[style*="width"]');
+            for (const div of allDivsWithWidth) {
+                const width = div.style.width;
+                if (width && width !== '0%' && width !== '0px') {
+                    const widthValue = parseFloat(width);
+                    if (!isNaN(widthValue) && widthValue > 0) {
+                        return { hasProgress: true, width: width };
+                    }
+                }
+            }
+        }
+
+        // Method 2: Check for legacy #progress element
+        const legacyProgress = element.querySelector('#progress');
+        if (legacyProgress) {
+            const width = legacyProgress.style.width;
+            if (width && width !== '0%' && width !== '0px') {
+                const widthValue = parseFloat(width);
+                if (!isNaN(widthValue) && widthValue > 0) {
+                    return { hasProgress: true, width: width };
+                }
+            }
+        }
+
+        // Method 3: Check by attribute (sometimes YouTube uses data attributes)
+        const elementsWithProgress = element.querySelectorAll('[style*="width"]');
+        for (const el of elementsWithProgress) {
+            const className = typeof el.className === 'string' ? el.className : (el.className?.baseVal || '');
+            if (className && (
+                className.includes('progress') ||
+                className.includes('Progress') ||
+                className.includes('Watched')
+            )) {
+                const width = el.style.width;
+                if (width && width !== '0%' && width !== '0px') {
+                    const widthValue = parseFloat(width);
+                    if (!isNaN(widthValue) && widthValue > 0) {
+                        return { hasProgress: true, width: width };
+                    }
+                }
+            }
+        }
+
+        return { hasProgress: false, width: null };
+    }
+
+    /**
+     * Periodic check for progress bars that loaded after initial processing
+     */
+    function periodicProgressBarCheck() {
+        if (!shouldRunOnCurrentPage()) return;
+
+        const shownVideos = document.querySelectorAll('[data-processed="show"]');
+
+        for (const element of shownVideos) {
+            const progressCheck = checkForWatchedProgress(element);
+
+            if (progressCheck.hasProgress) {
+                const titleEl = element.querySelector('span.yt-core-attributed-string');
+                const title = titleEl ? titleEl.textContent.trim() : 'Unknown';
+
+                debugLog(`%c🔄 LATE PROGRESS DETECTED (${progressCheck.width}): "${title}"`, 'color: #FF8800; font-weight: bold;');
+
+                // Hide the element
+                hideElement(element, `Already watched (${progressCheck.width} progress) - detected late`);
+            }
+        }
+    }
+
+    /**
+     * Start the periodic progress bar checker
+     */
+    function startProgressBarChecker() {
+        if (progressBarCheckInterval) {
+            clearInterval(progressBarCheckInterval);
+        }
+
+        // Check every 500ms for the first 5 seconds, then every 2 seconds
+        let checkCount = 0;
+        const fastCheckInterval = setInterval(() => {
+            periodicProgressBarCheck();
+            checkCount++;
+            if (checkCount >= 10) {
+                clearInterval(fastCheckInterval);
+                // Switch to slower interval
+                progressBarCheckInterval = setInterval(periodicProgressBarCheck, 2000);
+            }
+        }, 500);
     }
 
     // ===== MAIN FUNCTIONS =====
@@ -250,59 +365,11 @@
             return { isNormal: false, reason: 'Live stream detected' };
         }
 
-        // COMPREHENSIVE progress bar detection - check multiple methods
-        // Method 1: Check for progress bar element with visible width
-        const progressBarElement = element.querySelector('yt-thumbnail-overlay-progress-bar-view-model');
-        if (progressBarElement) {
-            // Check for the progress segment div (both legacy and new class names)
-            const progressSegments = progressBarElement.querySelectorAll(
-                '.ytThumbnailOverlayProgressBarHostWatchedProgressBarSegment, ' +
-                '[class*="WatchedProgressBarSegment"]'
-            );
-
-            for (const progressSegment of progressSegments) {
-                const width = progressSegment.style.width;
-                // If width is set and greater than 0%, it's been watched
-                if (width && width.trim() !== '' && width !== '0%' && width !== '0px') {
-                    const widthValue = parseFloat(width);
-                    if (widthValue > 0) {
-                        debugLog(`Found watched progress bar with width: ${width}`);
-                        return { isNormal: false, reason: `Already watched (${width} progress)` };
-                    }
-                }
-            }
-
-            // Also check if the progress bar itself is visible with any visible elements
-            const progressBars = progressBarElement.querySelectorAll(
-                '.ytThumbnailOverlayProgressBarHostWatchedProgressBar, ' +
-                '[class*="WatchedProgressBar"]'
-            );
-
-            for (const progressBar of progressBars) {
-                const computedStyle = window.getComputedStyle(progressBar);
-                if (computedStyle.display !== 'none' && computedStyle.visibility !== 'hidden') {
-                    // If progress bar is visible, check its children for width
-                    const children = progressBar.querySelectorAll('[style*="width"]');
-                    for (const child of children) {
-                        const width = child.style.width;
-                        if (width && width !== '0%' && width !== '0px' && parseFloat(width) > 0) {
-                            debugLog(`Found watched progress in visible bar: ${width}`);
-                            return { isNormal: false, reason: `Already watched (${width} progress)` };
-                        }
-                    }
-                }
-            }
-        }
-
-        // Method 2: General progress bar selector check (fallback)
-        const hasProgressBar = element.querySelector(CONFIG.SELECTORS.PROGRESS_BARS);
-        if (hasProgressBar) {
-            // Do a final check to make sure it actually has visible progress
-            const style = window.getComputedStyle(hasProgressBar);
-            if (style.display !== 'none' && style.visibility !== 'hidden') {
-                debugLog(`Found generic progress bar element`);
-                return { isNormal: false, reason: 'Already watched' };
-            }
+        // Use the comprehensive progress check function
+        const progressCheck = checkForWatchedProgress(element);
+        if (progressCheck.hasProgress) {
+            debugLog(`Found watched progress bar with width: ${progressCheck.width}`);
+            return { isNormal: false, reason: `Already watched (${progressCheck.width} progress)` };
         }
 
         return { isNormal: true, reason: 'Normal video' };
@@ -312,7 +379,7 @@
         if (element) {
             element.setAttribute('data-hide-reason', reason);
             element.setAttribute('data-processed', 'hide');
-            element.style.display = 'none !important';
+            element.style.setProperty('display', 'none', 'important');
         }
     }
 
@@ -374,6 +441,7 @@
 
         if (!parentElement) return;
 
+        // Skip if already hidden
         if (parentElement.hasAttribute('data-hide-reason')) {
             return;
         }
@@ -401,9 +469,9 @@
             return;
         }
 
-        // Check filtered terms - only if there are actual terms to filter
+        // Check filtered terms
         for (const term of FILTERED_TITLE_TERMS) {
-            if (term.length === 0) continue; // Skip empty strings
+            if (term.length === 0) continue;
             const escapedTerm = escapeRegExp(term);
             const regex = new RegExp(`(?<![\\p{L}\\p{N}_])${escapedTerm}(?![\\p{L}\\p{N}_])`, 'iu');
 
@@ -440,9 +508,9 @@
 
         debugLog(`   Found - Channel: "${channelName}", Video ID: "${videoId}"`);
 
-        // Check filtered channel terms - only if there are actual terms to filter
+        // Check filtered channel terms
         for (const term of FILTERED_CHANNEL_TERMS) {
-            if (term.length === 0) continue; // Skip empty strings
+            if (term.length === 0) continue;
             const escapedTerm = escapeRegExp(term);
             const regex = new RegExp(`(?<![\\p{L}\\p{N}_])${escapedTerm}(?![\\p{L}\\p{N}_])`, 'iu');
             if (regex.test(channelName)) {
@@ -508,13 +576,12 @@
             return;
         }
 
-        // Check video duration (skip for music videos)
+        // Check video duration
         const durationBadge = parentElement.querySelector(CONFIG.SELECTORS.DURATION_BADGE);
         if (durationBadge) {
             const durationText = durationBadge.textContent.trim();
             const durationSeconds = parseDuration(durationText);
 
-            // Check if this is a music video by looking for the music icon
             const badgeShape = durationBadge.closest('badge-shape');
             const hasMusicIcon = badgeShape && badgeShape.querySelector('.yt-badge-shape__icon');
 
@@ -590,55 +657,54 @@
         }
 
         currentObserver = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
+            let shouldCheckProgress = false;
+
+            for (const mutation of mutations) {
                 hideShortsShelf();
+
                 if (mutation.type === 'childList') {
-                    mutation.addedNodes.forEach((node) => {
+                    for (const node of mutation.addedNodes) {
                         if (node.nodeType === Node.ELEMENT_NODE) {
                             if (node.matches && node.matches(getVideoContainerSelectors())) {
                                 processThumbnail(node);
                             } else if (node.querySelectorAll) {
                                 node.querySelectorAll(getVideoContainerSelectors()).forEach(processThumbnail);
                             }
-                        }
-                    });
-                } else if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
-                    const target = mutation.target;
 
-                    // Check if this is a progress bar segment getting its width set
-                    if (target.classList &&
-                        (target.classList.contains('ytThumbnailOverlayProgressBarHostWatchedProgressBarSegment') ||
-                         target.className.includes('WatchedProgressBarSegment'))) {
-
-                        const width = target.style.width;
-                        if (width && width !== '0%' && width !== '0px' && parseFloat(width) > 0) {
-                            const thumbnailElement = target.closest(getVideoContainerSelectors());
-                            if (thumbnailElement && thumbnailElement.getAttribute('data-processed') === 'show') {
-                                debugLog(`Progress bar width changed to ${width}, re-checking element`);
-                                // Remove the processed attribute so it can be re-evaluated
-                                thumbnailElement.removeAttribute('data-processed');
-                                processThumbnail(thumbnailElement);
+                            // Check if a progress bar element was added
+                            if (node.tagName === 'YT-THUMBNAIL-OVERLAY-PROGRESS-BAR-VIEW-MODEL' ||
+                                (node.querySelector && node.querySelector('yt-thumbnail-overlay-progress-bar-view-model'))) {
+                                shouldCheckProgress = true;
                             }
                         }
                     }
+                } else if (mutation.type === 'attributes') {
+                    const target = mutation.target;
 
-                    // Legacy support for #progress elements
-                    if (target.id === 'progress') {
-                        const thumbnailElement = target.closest(getVideoContainerSelectors());
-                        if (thumbnailElement) {
-                            processThumbnail(thumbnailElement);
+                    // Check for style changes on progress bar segments
+                    if (mutation.attributeName === 'style' && target.className) {
+                        const className = target.className.toString();
+                        if (className.includes('ProgressBarSegment') ||
+                            className.includes('progress') ||
+                            className.includes('Progress')) {
+                            shouldCheckProgress = true;
                         }
                     }
                 }
-            });
+            }
+
+            // If we detected progress bar changes, run a check
+            if (shouldCheckProgress) {
+                setTimeout(periodicProgressBarCheck, 100);
+            }
         });
 
         currentObserver.observe(document.body, {
             childList: true,
             subtree: true,
             attributes: true,
-            attributeFilter: ['style'],
-            attributeOldValue: true
+            attributeFilter: ['style', 'class'],
+            attributeOldValue: false
         });
 
         timingLog('MutationObserver started', '#0066FF');
@@ -664,22 +730,8 @@
                 processExistingThumbnails();
                 observeDOMChanges();
 
-                // Re-check after a delay to catch progress bars that load late
-                setTimeout(() => {
-                    debugLog('Running delayed re-check for progress bars...');
-                    const shownVideos = document.querySelectorAll('[data-processed="show"]');
-                    shownVideos.forEach(element => {
-                        const progressSegment = element.querySelector('.ytThumbnailOverlayProgressBarHostWatchedProgressBarSegment, [class*="WatchedProgressBarSegment"]');
-                        if (progressSegment) {
-                            const width = progressSegment.style.width;
-                            if (width && width !== '0%' && width !== '0px' && parseFloat(width) > 0) {
-                                debugLog(`Found late-loaded progress bar (${width}), re-processing`);
-                                element.removeAttribute('data-processed');
-                                processThumbnail(element);
-                            }
-                        }
-                    });
-                }, 1500);
+                // Start the periodic progress bar checker
+                startProgressBarChecker();
             } else {
                 retryCount++;
                 setTimeout(attemptProcess, delay);
@@ -757,13 +809,10 @@
         const parts = durationText.trim().split(':').map(p => parseInt(p, 10));
 
         if (parts.length === 3) {
-            // Format: HH:MM:SS (e.g., "1:41:13")
             return parts[0] * 3600 + parts[1] * 60 + parts[2];
         } else if (parts.length === 2) {
-            // Format: MM:SS (e.g., "5:14")
             return parts[0] * 60 + parts[1];
         } else if (parts.length === 1) {
-            // Format: SS (e.g., "45")
             return parts[0];
         }
 
@@ -802,7 +851,6 @@
         pointer-events: none !important;
     }
 
-    /* Specific targeting for yt-lockup-view-model elements */
     yt-lockup-view-model[data-hide-reason] {
         display: none !important;
         height: 0 !important;
@@ -814,7 +862,6 @@
     function ensureCSS() {
         const pageType = getCurrentPageType();
 
-        // Don't inject CSS for non-target pages
         if (pageType === 'CHANNELS' || pageType === 'OTHER') {
             return;
         }
@@ -823,18 +870,14 @@
         const existingStyle = document.getElementById('youtube-filter-css');
 
         if (existingStyle) {
-            // CSS already exists - check if it needs updating for different page type
             if (cssInjectedForPage !== pageType) {
-                // Update the CSS content without removing the element
                 existingStyle.textContent = getHidingCSS(selectors);
                 cssInjectedForPage = pageType;
                 timingLog(`CSS updated for page type: ${pageType}`, '#00CCCC');
             }
-            // Otherwise, CSS is already correct, do nothing
             return;
         }
 
-        // No CSS exists yet, create it
         const targetElement = document.head || document.documentElement;
         if (!targetElement) {
             timingLog('WARNING: No target element for CSS injection!', '#FF0000');
@@ -858,12 +901,9 @@
         }
     }
 
-    // ===== EARLY CSS INJECTION =====
-    // Inject CSS as early as possible, before any content loads
     function injectEarlyCSS() {
         timingLog('injectEarlyCSS called', '#FFCC00');
 
-        // Use broad selectors that cover both HOME and WATCH pages
         const broadSelectors = 'ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer, yt-lockup-view-model';
 
         const css = `
@@ -904,7 +944,6 @@
     }
 `;
 
-        // Try to inject into head first
         if (document.head) {
             const style = document.createElement('style');
             style.id = 'youtube-filter-css';
@@ -915,7 +954,6 @@
             return;
         }
 
-        // If head doesn't exist, inject into documentElement
         if (document.documentElement) {
             const style = document.createElement('style');
             style.id = 'youtube-filter-css';
@@ -924,7 +962,6 @@
             cssInjectedForPage = 'EARLY';
             timingLog('Early CSS injected into documentElement', '#FFCC00');
 
-            // Move to head when it becomes available
             const headObserver = new MutationObserver((mutations, obs) => {
                 if (document.head && !document.head.contains(style)) {
                     document.head.appendChild(style);
@@ -946,6 +983,7 @@
                 if (window.getComputedStyle(element).display !== 'none') {
                     const reason = element.getAttribute('data-hide-reason');
                     debugLog(`Force re-hiding element that reappeared: ${reason}`);
+                    element.style.setProperty('display', 'none', 'important');
                 }
             });
         }, 1000);
@@ -991,7 +1029,7 @@
             fetchSubscribedChannels();
         } else if (shouldRunOnCurrentPage()) {
             debugLog('Processing thumbnails');
-            ensureCSS(); // Use ensureCSS instead of injectCSS
+            ensureCSS();
             processPageWithRetry();
         } else {
             debugLog('Not on a target page, script inactive');
@@ -1000,7 +1038,6 @@
     }
 
     // ===== IMMEDIATE EARLY CSS INJECTION =====
-    // This runs IMMEDIATELY when the script executes
     injectEarlyCSS();
 
     // ===== EVENT LISTENERS =====
@@ -1009,17 +1046,23 @@
         const currentUrl = event.detail?.url || window.location.href;
         timingLog(`yt-navigate-finish event fired, URL: ${currentUrl}`, '#FF6600');
 
+        // Clear any existing progress bar checker
+        if (progressBarCheckInterval) {
+            clearInterval(progressBarCheckInterval);
+            progressBarCheckInterval = null;
+        }
+
         convertCurrentUrl();
 
         if (currentUrl.includes('/feed/channels')) {
             removeCSS();
             fetchSubscribedChannels();
         } else if (shouldRunOnCurrentPage()) {
-            ensureCSS(); // Use ensureCSS - will update if needed, won't flash
+            ensureCSS();
             setTimeout(() => {
                 debugLog('Starting post-navigation processing...');
                 processPageWithRetry(8, 500);
-            }, 100); // Reduced delay since CSS is already in place
+            }, 100);
         } else {
             removeCSS();
             debugLog('Navigated to a non-target page, script inactive');
@@ -1036,6 +1079,10 @@
             currentObserver.disconnect();
             currentObserver = null;
         }
+        if (progressBarCheckInterval) {
+            clearInterval(progressBarCheckInterval);
+            progressBarCheckInterval = null;
+        }
     });
 
     const ytAppObserver = new MutationObserver((mutations) => {
@@ -1050,7 +1097,6 @@
         }
     });
 
-    // Wait for ytd-app to exist before observing
     function observeYtApp() {
         const ytApp = document.querySelector('ytd-app');
         if (ytApp) {
@@ -1059,7 +1105,6 @@
                 attributeFilter: ['video-id', 'active']
             });
         } else {
-            // Retry if ytd-app doesn't exist yet
             setTimeout(observeYtApp, 100);
         }
     }
