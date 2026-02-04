@@ -70,18 +70,12 @@
 
     let cssInjectedForPage = null;
     let progressBarCheckInterval = null;
+    let shownVideosOnPage = new Set();
 
     // ===== UTILITY FUNCTIONS =====
     function debugLog(...args) {
         if (DEBUG) {
             console.log(...args);
-        }
-    }
-
-    function timingLog(message, color = '#FF6600') {
-        if (DEBUG) {
-            const elapsed = performance.now() - SCRIPT_START_TIME;
-            console.log(`%c[TIMING +${elapsed.toFixed(2)}ms] ${message}`, `color: ${color}; font-weight: bold;`);
         }
     }
 
@@ -432,6 +426,7 @@
 
     function processThumbnail(thumbnailElement) {
         if (!shouldRunOnCurrentPage() || !shouldProcessElement(thumbnailElement)) {
+            debugLog('%c  ✗ Skipped (wrong page or element type)', 'color: orange');
             return;
         }
 
@@ -439,10 +434,14 @@
             thumbnailElement :
         thumbnailElement.closest(getVideoContainerSelectors());
 
-        if (!parentElement) return;
+        if (!parentElement) {
+            debugLog('%c  ✗ No parent element found', 'color: orange');
+            return;
+        }
 
         // Skip if already hidden
         if (parentElement.hasAttribute('data-hide-reason')) {
+            debugLog('%c  ✗ Already processed', 'color: gray');
             return;
         }
 
@@ -614,6 +613,14 @@
             logHiding(`Over threshold (${viewCount}/${Threshold})`, videoTitle);
             hideElement(parentElement, 'Over threshold');
         } else {
+            // Check for duplicate FIRST
+            if (shownVideosOnPage.has(videoId)) {
+                logHiding(`Duplicate video on page`, videoTitle);
+                hideElement(parentElement, 'Duplicate video');
+                return;
+            }
+            // Mark this video as shown on the page BEFORE showing it
+            shownVideosOnPage.add(videoId);
             logShowing(`Below threshold (${viewCount}/${Threshold})`, videoTitle);
             showElement(parentElement);
         }
@@ -633,7 +640,6 @@
             shelves.forEach(shelf => {
                 const titleElement = shelf.querySelector('#title.style-scope.ytd-rich-shelf-renderer');
                 if (titleElement && titleElement.textContent.trim() === 'Shorts') {
-                    debugLog('Hiding Shorts shelf on homepage.');
                     shelf.style.display = 'none';
                 }
             });
@@ -642,15 +648,12 @@
         if (isWatchPage) {
             const reelShelves = document.querySelectorAll('ytd-reel-shelf-renderer');
             reelShelves.forEach(shelf => {
-                debugLog('Hiding Shorts reel shelf on watch page.');
                 shelf.style.display = 'none';
             });
         }
     }
 
     function observeDOMChanges() {
-        timingLog('observeDOMChanges called', '#0066FF');
-
         if (currentObserver) {
             currentObserver.disconnect();
             currentObserver = null;
@@ -706,26 +709,18 @@
             attributeFilter: ['style', 'class'],
             attributeOldValue: false
         });
-
-        timingLog('MutationObserver started', '#0066FF');
     }
 
     function processExistingThumbnails() {
-        timingLog('processExistingThumbnails called', '#FF00FF');
-
         const thumbnails = document.querySelectorAll(getVideoContainerSelectors());
-        debugLog('Processing existing thumbnails:', thumbnails.length);
         thumbnails.forEach(processThumbnail);
     }
 
     function processPageWithRetry(maxRetries = 3, delay = 500) {
-        timingLog(`processPageWithRetry called (maxRetries=${maxRetries}, delay=${delay})`, '#FF00FF');
         let retryCount = 0;
 
         function attemptProcess() {
             const thumbnails = document.querySelectorAll(getVideoContainerSelectors());
-            timingLog(`Retry attempt ${retryCount + 1}: Found ${thumbnails.length} thumbnails`, '#FF00FF');
-
             if (thumbnails.length > 0 || retryCount >= maxRetries) {
                 processExistingThumbnails();
                 observeDOMChanges();
@@ -873,14 +868,12 @@
             if (cssInjectedForPage !== pageType) {
                 existingStyle.textContent = getHidingCSS(selectors);
                 cssInjectedForPage = pageType;
-                timingLog(`CSS updated for page type: ${pageType}`, '#00CCCC');
             }
             return;
         }
 
         const targetElement = document.head || document.documentElement;
         if (!targetElement) {
-            timingLog('WARNING: No target element for CSS injection!', '#FF0000');
             return;
         }
 
@@ -889,7 +882,6 @@
         style.textContent = getHidingCSS(selectors);
         targetElement.appendChild(style);
         cssInjectedForPage = pageType;
-        timingLog(`CSS injected for page type: ${pageType}`, '#00CCCC');
     }
 
     function removeCSS() {
@@ -897,13 +889,10 @@
         if (existingStyle) {
             existingStyle.remove();
             cssInjectedForPage = null;
-            timingLog('CSS removed - not on target page', '#00CCCC');
         }
     }
 
     function injectEarlyCSS() {
-        timingLog('injectEarlyCSS called', '#FFCC00');
-
         const broadSelectors = 'ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-compact-playlist-renderer, ytd-item-section-renderer, yt-lockup-view-model';
 
         const css = `
@@ -950,7 +939,6 @@
             style.textContent = css;
             document.head.appendChild(style);
             cssInjectedForPage = 'EARLY';
-            timingLog('Early CSS injected into head', '#FFCC00');
             return;
         }
 
@@ -960,20 +948,15 @@
             style.textContent = css;
             document.documentElement.appendChild(style);
             cssInjectedForPage = 'EARLY';
-            timingLog('Early CSS injected into documentElement', '#FFCC00');
-
             const headObserver = new MutationObserver((mutations, obs) => {
                 if (document.head && !document.head.contains(style)) {
                     document.head.appendChild(style);
-                    timingLog('Moved CSS from documentElement to head', '#FFCC00');
                     obs.disconnect();
                 }
             });
             headObserver.observe(document.documentElement, { childList: true, subtree: true });
             return;
         }
-
-        timingLog('WARNING: Cannot inject early CSS - no target element', '#FF0000');
     }
 
     function monitorHiddenElements() {
@@ -1017,8 +1000,6 @@
     }
 
     function init() {
-        timingLog('init() called', '#00FF00');
-
         loadStoredSubscribedChannels();
         monitorHiddenElements();
         convertCurrentUrl();
@@ -1028,7 +1009,6 @@
             removeCSS();
             fetchSubscribedChannels();
         } else if (shouldRunOnCurrentPage()) {
-            debugLog('Processing thumbnails');
             ensureCSS();
             processPageWithRetry();
         } else {
@@ -1044,7 +1024,7 @@
 
     document.addEventListener('yt-navigate-finish', (event) => {
         const currentUrl = event.detail?.url || window.location.href;
-        timingLog(`yt-navigate-finish event fired, URL: ${currentUrl}`, '#FF6600');
+        shownVideosOnPage.clear();
 
         // Clear any existing progress bar checker
         if (progressBarCheckInterval) {
@@ -1060,7 +1040,6 @@
         } else if (shouldRunOnCurrentPage()) {
             ensureCSS();
             setTimeout(() => {
-                debugLog('Starting post-navigation processing...');
                 processPageWithRetry(8, 500);
             }, 100);
         } else {
@@ -1074,7 +1053,6 @@
     });
 
     document.addEventListener('yt-navigate-start', () => {
-        timingLog('yt-navigate-start event fired', '#FF6600');
         if (currentObserver) {
             currentObserver.disconnect();
             currentObserver = null;
@@ -1109,23 +1087,16 @@
         }
     }
 
-    timingLog(`Document readyState: ${document.readyState}`, '#888888');
-
     if (document.readyState === 'complete') {
-        timingLog('Document already complete, calling init()', '#00FF00');
         init();
         observeYtApp();
     } else {
         document.addEventListener('DOMContentLoaded', () => {
-            timingLog('DOMContentLoaded event fired', '#00FF00');
             observeYtApp();
         });
 
         window.addEventListener('load', () => {
-            timingLog('window load event fired', '#00FF00');
             init();
         });
     }
-
-    timingLog('Script setup complete', '#888888');
 })();
