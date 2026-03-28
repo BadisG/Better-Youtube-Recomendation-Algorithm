@@ -488,7 +488,7 @@
             const channelSpan = row.querySelector(CONFIG.SELECTORS.METADATA_SPANS);
             if (channelSpan) {
                 const text = channelSpan.textContent.trim();
-                if (!text.includes('view') && !text.includes('ago') && !text.includes('•') && text.length > 0) {
+                if (!text.includes('view') && !text.includes('ago') && !text.includes('•') && !/^[\d,.]+[kmb]?$/i.test(text) && text.length > 0) {
                     channelName = text;
                     break;
                 }
@@ -535,9 +535,9 @@
             const spans = row.querySelectorAll(CONFIG.SELECTORS.METADATA_SPANS);
             for (const span of spans) {
                 const text = span.textContent.trim().toLowerCase();
-                if (text.includes('view') && !viewCountText) {
+                if ((text.includes('view') || /^[\d,.]+[kmb]?$/i.test(text)) && !viewCountText) {
                     viewCountText = text;
-                } else if (text.match(/^(streamed\s+)?\d+\s+(second|minute|hour|day|week|month|year)s?\s+ago$/i) && !metadataDate) {
+                } else if (text.match(/^(streamed\s+)?\d+\s*(s|m|h|d|w|mo|y|second|minute|hour|day|week|month|year)s?\s+ago$/i) && !metadataDate) {
                     metadataDate = text;
                 }
             }
@@ -748,30 +748,38 @@
 
     function parseDateFromMetadata(metadataText) {
         const now = new Date();
-        const match = metadataText.match(/^(Streamed\s+)?(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago$/i);
 
+        // Long format: "9 days ago", "Streamed 2 hours ago"
+        let match = metadataText.match(/^(Streamed\s+)?(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago$/i);
         if (match) {
             const value = parseInt(match[2], 10);
-            const unit = match[3];
-
-            switch (unit) {
-                case 'second':
-                    return new Date(now - value * 1000);
-                case 'minute':
-                    return new Date(now - value * 60000);
-                case 'hour':
-                    return new Date(now - value * 3600000);
-                case 'day':
-                    return new Date(now - value * 86400000);
-                case 'week':
-                    return new Date(now - value * 7 * 86400000);
-                case 'month':
-                    return new Date(now.setMonth(now.getMonth() - value));
-                case 'year':
-                    return new Date(now.setFullYear(now.getFullYear() - value));
+            switch (match[3].toLowerCase()) {
+                case 'second': return new Date(now - value * 1000);
+                case 'minute': return new Date(now - value * 60000);
+                case 'hour':   return new Date(now - value * 3600000);
+                case 'day':    return new Date(now - value * 86400000);
+                case 'week':   return new Date(now - value * 7 * 86400000);
+                case 'month':  return new Date(now.setMonth(now.getMonth() - value));
+                case 'year':   return new Date(now.setFullYear(now.getFullYear() - value));
             }
         }
-        console.error('Unrecognized date format (not a date):', metadataText);
+
+        // Short format: "9d ago", "3h ago", "2w ago", "5mo ago", "1y ago"
+        match = metadataText.match(/^(Streamed\s+)?(\d+)\s*(s|m|h|d|w|mo|y)\s+ago$/i);
+        if (match) {
+            const value = parseInt(match[2], 10);
+            switch (match[3].toLowerCase()) {
+                case 's':  return new Date(now - value * 1000);
+                case 'm':  return new Date(now - value * 60000);
+                case 'h':  return new Date(now - value * 3600000);
+                case 'd':  return new Date(now - value * 86400000);
+                case 'w':  return new Date(now - value * 7 * 86400000);
+                case 'mo': return new Date(now.setMonth(now.getMonth() - value));
+                case 'y':  return new Date(now.setFullYear(now.getFullYear() - value));
+            }
+        }
+
+        console.error('Unrecognized date format:', metadataText);
         return null;
     }
 
