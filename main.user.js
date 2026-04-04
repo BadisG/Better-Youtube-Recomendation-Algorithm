@@ -786,6 +786,12 @@
 
     function parseViewCount(viewText) {
         const lowerViewText = viewText.toLowerCase();
+        let wordMatch = lowerViewText.match(/([\d,.]+)\s*(thousand|million|billion)/);
+        if (wordMatch) {
+            const num = parseFloat(wordMatch[1].replace(/,/g, ''));
+            const multipliers = { thousand: 1_000, million: 1_000_000, billion: 1_000_000_000 };
+            return isNaN(num) ? 0 : num * multipliers[wordMatch[2]];
+        }
         let match = lowerViewText.match(/([\d,.]+)\s*([kmb])/);
         if (match) {
             const num = parseFloat(match[1].replace(/,/g, ''));
