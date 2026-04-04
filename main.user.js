@@ -38,10 +38,10 @@
             VIDEO_TITLE: 'h3.yt-lockup-metadata-view-model__heading-reset span.yt-core-attributed-string',
             VIDEO_TITLE_FALLBACK: 'h3 a span.yt-core-attributed-string',
             VIDEO_LINK: 'a[href*="/watch?v="]',
-            METADATA_ROWS: '.yt-content-metadata-view-model__metadata-row',
+            METADATA_ROWS: '.ytContentMetadataViewModelMetadataRow',
             METADATA_SPANS: 'span.yt-core-attributed-string',
             CHANNEL_NAME_PRIMARY: 'ytd-channel-name yt-formatted-string#text',
-            CHANNEL_NAME_METADATA: '.yt-content-metadata-view-model-wiz__metadata-row span.yt-core-attributed-string',
+            CHANNEL_NAME_METADATA: '.ytContentMetadataViewModelMetadataRow span.yt-core-attributed-string',
             CHANNEL_NAME_LINK: 'a[href^="/@"]',
             SUBSCRIPTION_GRID: 'ytd-expanded-shelf-contents-renderer #contents',
             SUBSCRIPTION_LIST: 'ytd-section-list-renderer #items',
@@ -535,8 +535,9 @@
             const spans = row.querySelectorAll(CONFIG.SELECTORS.METADATA_SPANS);
             for (const span of spans) {
                 const text = span.textContent.trim().toLowerCase();
-                if ((text.includes('view') || /^[\d,.]+[kmb]?$/i.test(text)) && !viewCountText) {
-                    viewCountText = text;
+                const ariaLabel = span.getAttribute('aria-label') || '';
+                if ((ariaLabel.includes('view') || text.includes('view') || /^[\d,.]+[kmb]?$/i.test(text)) && !viewCountText) {
+                    viewCountText = ariaLabel.includes('view') ? ariaLabel : text;
                 } else if (text.match(/^(streamed\s+)?\d+\s*(s|m|h|d|w|mo|y|second|minute|hour|day|week|month|year)s?\s+ago$/i) && !metadataDate) {
                     metadataDate = text;
                 }
