@@ -35,13 +35,13 @@
         },
 
         SELECTORS: {
-            VIDEO_TITLE: 'h3.yt-lockup-metadata-view-model__heading-reset span.yt-core-attributed-string',
-            VIDEO_TITLE_FALLBACK: 'h3 a span.yt-core-attributed-string',
+            VIDEO_TITLE: 'h3.yt-lockup-metadata-view-model__heading-reset span.yt-core-attributed-string, h3.ytLockupMetadataViewModelHeadingReset span.ytAttributedStringHost',
+            VIDEO_TITLE_FALLBACK: 'h3 a span.yt-core-attributed-string, h3 a span.ytAttributedStringHost',
             VIDEO_LINK: 'a[href*="/watch?v="]',
             METADATA_ROWS: '.ytContentMetadataViewModelMetadataRow',
-            METADATA_SPANS: 'span.yt-core-attributed-string',
+            METADATA_SPANS: 'span.yt-core-attributed-string, span.ytAttributedStringHost',
             CHANNEL_NAME_PRIMARY: 'ytd-channel-name yt-formatted-string#text',
-            CHANNEL_NAME_METADATA: '.ytContentMetadataViewModelMetadataRow span.yt-core-attributed-string',
+            CHANNEL_NAME_METADATA: '.ytContentMetadataViewModelMetadataRow span.yt-core-attributed-string, .ytContentMetadataViewModelMetadataRow span.ytAttributedStringHost',
             CHANNEL_NAME_LINK: 'a[href^="/@"]',
             SUBSCRIPTION_GRID: 'ytd-expanded-shelf-contents-renderer #contents',
             SUBSCRIPTION_LIST: 'ytd-section-list-renderer #items',
@@ -185,7 +185,7 @@
             const progressCheck = checkForWatchedProgress(element);
 
             if (progressCheck.hasProgress) {
-                const titleEl = element.querySelector('span.yt-core-attributed-string');
+                const titleEl = element.querySelector('span.yt-core-attributed-string, span.ytAttributedStringHost');
                 const title = titleEl ? titleEl.textContent.trim() : 'Unknown';
 
                 debugLog(`%c🔄 LATE PROGRESS DETECTED (${progressCheck.width}): "${title}"`, 'color: #FF8800; font-weight: bold;');
