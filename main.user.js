@@ -52,7 +52,7 @@
             WATCH_CONTAINER: 'ytd-watch-flexy',
             SIDEBAR_RECOMMENDATIONS: 'ytd-compact-video-renderer',
             YT_LOCKUP_CONTENT_TYPE: '[ytb-content-type]',
-            DURATION_BADGE: '.yt-badge-shape__text',
+            DURATION_BADGE: '.yt-badge-shape__text, .ytBadgeShapeText',
             // Updated progress bar selectors
             PROGRESS_BAR_CONTAINER: 'yt-thumbnail-overlay-progress-bar-view-model',
             PROGRESS_BAR_SEGMENT: '.ytThumbnailOverlayProgressBarHostWatchedProgressBarSegment, [class*="WatchedProgressBarSegment"]',
@@ -583,7 +583,7 @@
             const durationSeconds = parseDuration(durationText);
 
             const badgeShape = durationBadge.closest('badge-shape');
-            const hasMusicIcon = badgeShape && badgeShape.querySelector('.yt-badge-shape__icon');
+            const hasMusicIcon = badgeShape && badgeShape.querySelector('.yt-badge-shape__icon, .ytBadgeShapeIcon');
 
             if (hasMusicIcon) {
                 debugLog(`   Music video detected (has music icon), skipping duration filter`);
